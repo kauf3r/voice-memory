@@ -25,13 +25,13 @@ export default function Header() {
           <nav className="hidden md:flex space-x-8">
             <a
               href="/"
-              className="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+              className="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
               Dashboard
             </a>
             <a
               href="/knowledge"
-              className="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+              className="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
               Knowledge
             </a>

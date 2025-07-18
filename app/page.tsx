@@ -7,6 +7,7 @@ import LoginForm from './components/LoginForm'
 import UploadButton from './components/UploadButton'
 import NoteCard from './components/NoteCard'
 import ProcessingStatus from './components/ProcessingStatus'
+import SearchBar from './components/SearchBar'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useState } from 'react'
 
@@ -80,6 +81,13 @@ export default function Home() {
             <p className="text-sm text-gray-500">With insights</p>
           </GridItem>
         </GridContainer>
+
+        {/* Search Bar */}
+        {totalCount > 0 && (
+          <div className="max-w-2xl mx-auto">
+            <SearchBar />
+          </div>
+        )}
 
         {/* Recent Notes */}
         <div>
