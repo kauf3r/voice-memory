@@ -4,16 +4,35 @@ import { useAuth } from './components/AuthProvider'
 import Layout, { GridContainer, GridItem } from './components/Layout'
 import { LoadingPage } from './components/LoadingSpinner'
 import LoginForm from './components/LoginForm'
+import UploadButton from './components/UploadButton'
+import NoteCard from './components/NoteCard'
+import { useNotes } from '@/lib/hooks/use-notes'
+import { useState } from 'react'
 
 export default function Home() {
-  const { user, loading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
+  const { notes, loading: notesLoading, error, totalCount, hasMore, refresh, loadMore } = useNotes()
+  const [searchQuery, setSearchQuery] = useState('')
 
-  if (loading) {
+  if (authLoading) {
     return <LoadingPage />
   }
 
   if (!user) {
     return <LoginForm />
+  }
+
+  const processingCount = notes.filter(note => !note.processed_at).length
+  const processedCount = notes.filter(note => note.processed_at).length
+
+  const handleUploadComplete = async () => {
+    // Refresh notes list when upload completes
+    await refresh()
+  }
+
+  const handleNoteDelete = async (noteId: string) => {
+    // Refresh notes list when note is deleted
+    await refresh()
   }
 
   return (
@@ -25,40 +44,96 @@ export default function Home() {
           <p className="text-lg text-gray-600">Transform your voice notes into actionable insights</p>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex justify-center">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium">
-            Upload Voice Note
-          </button>
+        {/* Upload Section */}
+        <div className="max-w-2xl mx-auto">
+          <UploadButton
+            onUploadComplete={handleUploadComplete}
+            onUploadStart={(file) => {
+              console.log('Upload started:', file.name)
+            }}
+          />
         </div>
 
         {/* Stats Grid */}
         <GridContainer>
           <GridItem className="p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-2">Total Notes</h3>
-            <p className="text-3xl font-bold text-blue-600">0</p>
-            <p className="text-sm text-gray-500">No notes yet</p>
+            <p className="text-3xl font-bold text-blue-600">{totalCount}</p>
+            <p className="text-sm text-gray-500">
+              {totalCount === 0 ? 'No notes yet' : 'Voice recordings'}
+            </p>
           </GridItem>
           
           <GridItem className="p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-2">Processing</h3>
-            <p className="text-3xl font-bold text-orange-600">0</p>
+            <p className="text-3xl font-bold text-orange-600">{processingCount}</p>
             <p className="text-sm text-gray-500">In queue</p>
           </GridItem>
           
           <GridItem className="p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Insights</h3>
-            <p className="text-3xl font-bold text-green-600">0</p>
-            <p className="text-sm text-gray-500">Generated</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Processed</h3>
+            <p className="text-3xl font-bold text-green-600">{processedCount}</p>
+            <p className="text-sm text-gray-500">With insights</p>
           </GridItem>
         </GridContainer>
 
         {/* Recent Notes */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Notes</h2>
-          <div className="text-center py-12 text-gray-500">
-            <p>No voice notes yet. Upload your first recording to get started!</p>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Recent Notes</h2>
+            {notes.length > 0 && (
+              <button
+                onClick={refresh}
+                disabled={notesLoading}
+                className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            )}
           </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <p className="text-red-700">{error}</p>
+            </div>
+          )}
+
+          {notesLoading && notes.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 mt-2">Loading notes...</p>
+            </div>
+          ) : notes.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <p>No voice notes yet. Upload your first recording to get started!</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Notes List */}
+              <div className="space-y-4">
+                {notes.map((note) => (
+                  <NoteCard 
+                    key={note.id} 
+                    note={note} 
+                    onDelete={handleNoteDelete}
+                  />
+                ))}
+              </div>
+
+              {/* Load More */}
+              {hasMore && (
+                <div className="text-center">
+                  <button
+                    onClick={loadMore}
+                    disabled={notesLoading}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium"
+                  >
+                    {notesLoading ? 'Loading...' : 'Load More'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Layout>
