@@ -6,6 +6,7 @@ import { LoadingPage } from './components/LoadingSpinner'
 import LoginForm from './components/LoginForm'
 import UploadButton from './components/UploadButton'
 import NoteCard from './components/NoteCard'
+import ProcessingStatus from './components/ProcessingStatus'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useState } from 'react'
 
@@ -53,6 +54,9 @@ export default function Home() {
             }}
           />
         </div>
+
+        {/* Processing Status */}
+        <ProcessingStatus onStatsUpdate={() => refresh()} />
 
         {/* Stats Grid */}
         <GridContainer>
