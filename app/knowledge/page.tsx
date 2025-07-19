@@ -7,6 +7,8 @@ import { LoadingPage } from '../components/LoadingSpinner'
 import LoginForm from '../components/LoginForm'
 import ErrorMessage from '../components/ErrorMessage'
 import SearchBar from '../components/SearchBar'
+import ExportButton from '../components/ExportButton'
+import { supabase } from '@/lib/supabase'
 
 interface KnowledgeStats {
   totalNotes: number
@@ -71,6 +73,50 @@ export default function KnowledgePage() {
       setError(err instanceof Error ? err.message : 'Failed to load knowledge')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExport = async (format: 'json' | 'csv' | 'pdf') => {
+    if (!user) return
+
+    try {
+      // Get the current session for auth
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session. Please log in again.')
+      }
+
+      const response = await fetch(`/api/knowledge/export?format=${format}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Export failed')
+      }
+
+      // Create download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      
+      // Extract filename from response headers or create default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+        : `voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.${format}`
+      
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('Export failed:', err)
+      alert('Export failed. Please try again.')
     }
   }
 
@@ -358,8 +404,11 @@ export default function KnowledgePage() {
               Aggregated insights from {knowledge.stats.totalNotes} voice notes
             </p>
           </div>
-          <div className="text-sm text-gray-500">
-            Last updated: {formatDate(knowledge.lastUpdated)}
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-500">
+              Last updated: {formatDate(knowledge.lastUpdated)}
+            </div>
+            <ExportButton onExport={handleExport} />
           </div>
         </div>
 

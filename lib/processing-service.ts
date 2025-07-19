@@ -28,27 +28,42 @@ export class ProcessingService {
     console.log(`Starting batch processing (max ${batchSize} items)`)
 
     try {
-      // Get next notes to process
-      const { data: jobs, error: jobError } = await this.supabase
-        .rpc('get_next_notes_to_process', { batch_size: batchSize })
+      // Get notes that need processing (no transcription OR no analysis)
+      const { data: notes, error: notesError } = await this.supabase
+        .from('notes')
+        .select('id, user_id, audio_url, transcription, analysis, processed_at')
+        .or('transcription.is.null,and(transcription.not.is.null,analysis.is.null)')
+        .not('audio_url', 'is', null)
+        .is('processed_at', null)
+        .limit(batchSize)
 
-      if (jobError) {
-        throw new Error(`Failed to get processing jobs: ${jobError.message}`)
+      if (notesError) {
+        throw new Error(`Failed to get notes: ${notesError.message}`)
       }
 
-      if (!jobs || jobs.length === 0) {
+      if (!notes || notes.length === 0) {
         console.log('No notes to process')
         return { processed: 0, failed: 0, errors: [] }
       }
 
-      console.log(`Got ${jobs.length} notes to process`)
+      console.log(`Got ${notes.length} notes to process`)
 
       let processed = 0
       let failed = 0
       const errors: string[] = []
 
-      // Process jobs sequentially to avoid rate limiting
-      for (const job of jobs as ProcessingJob[]) {
+      // Process notes sequentially to avoid rate limiting
+      for (const note of notes) {
+        // Convert note to job format
+        const job: ProcessingJob & { transcription?: string } = {
+          queue_id: note.id, // Use note ID as queue ID for now
+          note_id: note.id,
+          user_id: note.user_id,
+          audio_url: note.audio_url,
+          transcription: note.transcription, // Pass existing transcription
+          priority: 1,
+          attempts: 0
+        }
         try {
           await this.processJob(job)
           processed++
@@ -56,11 +71,10 @@ export class ProcessingService {
         } catch (error) {
           failed++
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          errors.push(`Note ${job.note_id}: ${errorMessage}`)
-          console.error(`Failed to process note ${job.note_id}:`, error)
+          errors.push(`Note ${note.id}: ${errorMessage}`)
+          console.error(`Failed to process note ${note.id}:`, error)
           
-          // Mark as failed in queue
-          await this.markJobFailed(job.queue_id, errorMessage)
+          // Note: Queue marking disabled since we're not using processing queue
         }
 
         // Small delay between jobs to avoid rate limiting
@@ -75,27 +89,63 @@ export class ProcessingService {
     }
   }
 
-  private async processJob(job: ProcessingJob): Promise<void> {
+  private async processJob(job: ProcessingJob & { transcription?: string }): Promise<void> {
     console.log(`Processing job ${job.queue_id} for note ${job.note_id}`)
 
-    // Get audio file from storage
-    const filePath = this.getFilePathFromUrl(job.audio_url)
-    const { data: audioData, error: storageError } = await this.supabase.storage
-      .from('audio-files')
-      .download(filePath)
+    let transcription = job.transcription
 
-    if (storageError || !audioData) {
-      throw new Error(`Could not retrieve audio file: ${storageError?.message}`)
-    }
+    // Step 1: Transcribe audio (skip if transcription already exists)
+    if (!transcription) {
+      // Get audio file from storage
+      const filePath = this.getFilePathFromUrl(job.audio_url)
+      const { data: audioData, error: storageError } = await this.supabase.storage
+        .from('audio-files')
+        .download(filePath)
 
-    // Convert blob to File object for Whisper API
-    const audioFile = new File([audioData], `${job.note_id}.mp3`, { type: 'audio/mpeg' })
+      if (storageError || !audioData) {
+        throw new Error(`Could not retrieve audio file: ${storageError?.message}`)
+      }
 
-    // Step 1: Transcribe audio
-    const { text: transcription, error: transcriptionError } = await transcribeAudio(audioFile)
+      // Convert blob to File object for Whisper API
+      // Detect actual file type from content and use appropriate MIME type
+      const buffer = await audioData.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+      
+      let mimeType = 'audio/mpeg'
+      let extension = '.mp3'
+      
+      // Check file signature/magic bytes
+      if (bytes.length >= 8) {
+        // Check for M4A/MP4 format (starts with ftyp box)
+        if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+          mimeType = 'audio/mp4'
+          extension = '.m4a'
+        }
+        // Check for MP3 format (ID3 tag or MPEG frame sync)
+        else if ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) || // ID3v2
+                 (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0)) { // MPEG frame sync
+          mimeType = 'audio/mpeg'
+          extension = '.mp3'
+        }
+        // Check for WAV format
+        else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+          mimeType = 'audio/wav'
+          extension = '.wav'
+        }
+      }
+      
+      console.log(`Detected file type: ${mimeType} (${extension}) for note ${job.note_id}`)
+      const audioFile = new File([audioData], `${job.note_id}${extension}`, { type: mimeType })
 
-    if (transcriptionError || !transcription) {
-      throw new Error(`Transcription failed: ${transcriptionError?.message}`)
+      const { text: transcriptionResult, error: transcriptionError } = await transcribeAudio(audioFile)
+
+      if (transcriptionError || !transcriptionResult) {
+        throw new Error(`Transcription failed: ${transcriptionError?.message}`)
+      }
+
+      transcription = transcriptionResult
+    } else {
+      console.log(`Using existing transcription for note ${job.note_id}`)
     }
 
     // Step 2: Get project knowledge for context
@@ -219,27 +269,48 @@ export class ProcessingService {
     failed: number
   }> {
     try {
-      const { data, error } = await this.supabase
-        .rpc('get_processing_stats', { user_id_param: userId })
+      // Get all notes for the user
+      const { data: notes, error } = await this.supabase
+        .from('notes')
+        .select('transcription, analysis, processed_at')
+        .eq('user_id', userId)
 
       if (error) {
         throw error
       }
 
-      const stats = data?.[0] || {
-        total_notes: 0,
-        pending: 0,
-        processing: 0,
-        completed: 0,
-        failed: 0
+      if (!notes) {
+        return { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 }
       }
 
+      const total = notes.length
+      let pending = 0
+      let processing = 0
+      let completed = 0
+      let failed = 0
+
+      notes.forEach(note => {
+        if (note.processed_at) {
+          // Has processed_at timestamp = completed
+          completed++
+        } else if (!note.transcription) {
+          // No transcription yet = pending
+          pending++
+        } else if (note.transcription && !note.analysis) {
+          // Has transcription but no analysis = processing
+          processing++
+        } else {
+          // Should not happen, but count as pending
+          pending++
+        }
+      })
+
       return {
-        total: stats.total_notes,
-        pending: stats.pending,
-        processing: stats.processing,
-        completed: stats.completed,
-        failed: stats.failed
+        total,
+        pending,
+        processing,
+        completed,
+        failed
       }
     } catch (error) {
       console.error('Failed to get processing stats:', error)

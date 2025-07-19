@@ -158,10 +158,18 @@ Return ONLY a valid JSON object matching this structure:
 
     console.log('GPT-4 analysis completed, response length:', responseText.length)
 
-    // Parse JSON response
+    // Parse JSON response - handle markdown code blocks
     let rawAnalysis
     try {
-      rawAnalysis = JSON.parse(responseText)
+      // Remove markdown code blocks if present
+      let cleanedResponse = responseText.trim()
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      
+      rawAnalysis = JSON.parse(cleanedResponse)
     } catch (parseError) {
       console.error('JSON parse error:', parseError)
       console.error('Raw response:', responseText)

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useAuth } from './AuthProvider'
 import { uploadAudioFile } from '@/lib/storage'
+import { supabase } from '@/lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
 import ErrorMessage from './ErrorMessage'
 
@@ -18,12 +19,15 @@ const ACCEPTED_AUDIO_TYPES = [
   'audio/mp3',
   'audio/wav',
   'audio/m4a',
+  'audio/mp4',      // For .m4a files
+  'audio/x-m4a',    // Alternative .m4a MIME type
   'audio/aac',
   'audio/ogg',
   'audio/webm',
+  'video/mp4',      // For .mp4 audio files
 ]
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
 
 export default function UploadButton({
   onUploadComplete,
@@ -43,7 +47,7 @@ export default function UploadButton({
       return `File type "${file.type}" is not supported. Please upload an audio file.`
     }
     if (file.size > MAX_FILE_SIZE) {
-      return `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds the 50MB limit.`
+      return `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds the 25MB limit.`
     }
     return null
   }, [])
@@ -84,10 +88,25 @@ export default function UploadButton({
         })
       }, 200)
 
+      // Get the current session for auth
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      console.log('Client session:', session ? 'Present' : 'Missing')
+      console.log('Session error:', sessionError)
+      
+      if (!session) {
+        console.error('No session found. Session error:', sessionError)
+        throw new Error('No active session. Please log in again.')
+      }
+      
+      console.log('Sending auth header:', `Bearer ${session.access_token.substring(0, 20)}...`)
+      
       // Upload via API route
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
       })
 
       clearInterval(progressInterval)
@@ -95,7 +114,23 @@ export default function UploadButton({
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Upload failed')
+        
+        // Enhanced error handling with more details
+        if (response.status === 413) {
+          // File too large
+          throw new Error(
+            errorData.details || 
+            `File too large. Maximum size is ${errorData.maxSizeMB || 25}MB. Your file is ${errorData.currentSizeMB}MB.`
+          )
+        } else if (response.status === 507) {
+          // Storage quota exceeded
+          throw new Error(
+            errorData.details || 
+            `Storage quota exceeded. You have ${errorData.currentCount}/${errorData.maxCount} notes.`
+          )
+        } else {
+          throw new Error(errorData.error || 'Upload failed')
+        }
       }
 
       const result = await response.json()
@@ -249,7 +284,7 @@ export default function UploadButton({
                 Drag and drop or click to browse
               </p>
               <p className="text-xs text-gray-400 mt-2">
-                Supports MP3, WAV, M4A, AAC, OGG (max 50MB each)
+                Supports MP3, WAV, M4A, AAC, OGG (max 25MB each)
               </p>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Note } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
 
 interface UseNotesReturn {
   notes: Note[]
@@ -32,6 +33,13 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     try {
       setError(null)
       
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.access_token) {
+        throw new Error('Not authenticated - please log in')
+      }
+      
       const currentOffset = resetOffset ? 0 : offset
       const params = new URLSearchParams({
         limit: limit.toString(),
@@ -42,10 +50,18 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
         params.append('search', search)
       }
 
-      const response = await fetch(`/api/notes?${params}`)
+      const response = await fetch(`/api/notes?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
       
       if (!response.ok) {
-        throw new Error('Failed to fetch notes')
+        if (response.status === 401) {
+          throw new Error('Authentication expired - please log in again')
+        }
+        throw new Error(`Failed to fetch notes (${response.status})`)
       }
 
       const data = await response.json()
@@ -62,7 +78,9 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
       setHasMore(data.pagination.hasMore)
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch notes')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch notes'
+      setError(errorMessage)
+      console.error('useNotes error:', err)
     } finally {
       setLoading(false)
     }

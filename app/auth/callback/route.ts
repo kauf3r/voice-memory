@@ -15,7 +15,7 @@ export async function GET(request: Request) {
         auth: {
           storage: {
             getItem: (key: string) => {
-              return cookieStore.get(key)?.value
+              return cookieStore.get(key)?.value || null
             },
             setItem: (key: string, value: string) => {
               cookieStore.set(key, value, {

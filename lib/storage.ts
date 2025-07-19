@@ -1,12 +1,17 @@
 import { supabase } from './supabase'
+import { SupabaseClient } from '@supabase/supabase-js'
 
 const AUDIO_BUCKET = 'audio-files'
 
 export async function uploadAudioFile(
   file: File,
-  userId: string
+  userId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<{ url: string | null; error: Error | null }> {
   try {
+    // Use provided client or fallback to default
+    const client = supabaseClient || supabase
+    
     // Create unique filename
     const timestamp = Date.now()
     const fileExt = file.name.split('.').pop()
@@ -14,7 +19,7 @@ export async function uploadAudioFile(
     const filePath = `${userId}/${fileName}`
 
     // Upload file
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await client.storage
       .from(AUDIO_BUCKET)
       .upload(filePath, file, {
         cacheControl: '3600',
@@ -26,7 +31,7 @@ export async function uploadAudioFile(
     }
 
     // Get public URL (with signed URL for privacy)
-    const { data } = supabase.storage
+    const { data } = client.storage
       .from(AUDIO_BUCKET)
       .getPublicUrl(filePath)
 
@@ -46,7 +51,7 @@ export async function getSignedAudioUrl(
 
     if (error) throw error
 
-    return { url: data.signedUrl, error: null }
+    return { url: data?.signedUrl || null, error: null }
   } catch (error) {
     return { url: null, error: error as Error }
   }

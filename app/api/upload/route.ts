@@ -1,24 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 import { uploadAudioFile } from '@/lib/storage'
+import { quotaManager } from '@/lib/quota-manager'
 
 export async function POST(request: NextRequest) {
+  console.log('Upload API called')
+  console.log('ENV CHECK:', {
+    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  })
+  
   try {
-    const supabase = createServerClient()
+    // Get authorization header - try both lowercase and capitalized
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    console.log('Auth header:', authHeader ? 'Present' : 'Missing', authHeader?.substring(0, 20) + '...')
+    console.log('All headers:', Array.from(request.headers.keys()))
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const supabase = createServerClient()
+    console.log('Supabase client created')
+    
+    // Try to get user from session
+    let user = null
+    let authError = null
+    
+    // First try to get user from the Authorization header
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      console.log('Attempting to authenticate with token:', token.substring(0, 20) + '...')
+      
+      // Use getUser with the token directly instead of setSession
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (error) {
+        console.error('Token authentication error:', error)
+        authError = error
+      } else {
+        user = data?.user
+        console.log('User authenticated via Bearer token:', user?.id)
+        
+        // Set the session for storage operations
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token // Use access token as refresh token for now
+        })
+      }
+    }
+    
+    // If no auth header or it failed, try to get from cookies
+    if (!user) {
+      const { data, error } = await supabase.auth.getUser()
+      user = data?.user
+      authError = error
+    }
     
     if (authError || !user) {
+      console.error('Auth error:', authError)
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - Please log in again' },
         { status: 401 }
       )
     }
 
+    console.log('Authentication successful, proceeding with upload')
+
     // Parse form data
+    console.log('Parsing form data...')
     const formData = await request.formData()
     const file = formData.get('file') as File
+    
+    console.log('File received:', file ? file.name : 'No file')
     
     if (!file) {
       return NextResponse.json(
@@ -28,42 +78,75 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
+    console.log('File type:', file.type, 'File size:', file.size)
     const allowedTypes = [
       'audio/mpeg',
       'audio/mp3', 
       'audio/wav',
       'audio/m4a',
+      'audio/mp4',      // For .m4a files
+      'audio/x-m4a',    // Alternative .m4a MIME type
       'audio/aac',
       'audio/ogg',
-      'audio/webm'
+      'audio/webm',
+      'video/mp4',      // For .mp4 audio files
     ]
     
     if (!allowedTypes.includes(file.type)) {
+      console.log('File type validation failed')
       return NextResponse.json(
         { error: `File type ${file.type} not supported` },
         { status: 400 }
       )
     }
+    
+    console.log('File type validation passed')
 
-    // Validate file size (50MB limit)
-    const maxSize = 50 * 1024 * 1024
+    // Validate file size (25MB limit for better processing)
+    const maxSize = 25 * 1024 * 1024
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 50MB' },
-        { status: 400 }
+        { 
+          error: 'File too large. Maximum size is 25MB',
+          details: `Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB. Please compress or trim your audio file.`,
+          maxSizeMB: 25,
+          currentSizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10
+        },
+        { status: 413 } // Payload Too Large
       )
     }
 
+    // Check quota limits using quota manager (temporarily disabled for testing)
+    try {
+      const quotaCheck = await quotaManager.checkUploadQuota(user.id)
+      if (!quotaCheck.allowed) {
+        return NextResponse.json(
+          { 
+            error: 'Quota exceeded',
+            details: quotaCheck.reason,
+            usage: quotaCheck.usage,
+            limits: quotaCheck.limits
+          },
+          { status: 507 } // Insufficient Storage
+        )
+      }
+    } catch (error) {
+      console.warn('Quota check failed, proceeding with upload:', error)
+    }
+
     // Upload to Supabase storage
-    const { url, error: uploadError } = await uploadAudioFile(file, user.id)
+    console.log('Starting storage upload for user:', user.id)
+    const { url, error: uploadError } = await uploadAudioFile(file, user.id, supabase)
     
     if (uploadError) {
       console.error('Upload error:', uploadError)
       return NextResponse.json(
-        { error: 'Upload failed' },
+        { error: 'Upload failed', details: uploadError.message },
         { status: 500 }
       )
     }
+    
+    console.log('Storage upload successful, URL:', url)
 
     // Get audio duration (basic implementation)
     let duration: number | null = null
@@ -90,7 +173,7 @@ export async function POST(request: NextRequest) {
     if (dbError) {
       console.error('Database error:', dbError)
       return NextResponse.json(
-        { error: 'Failed to create note record' },
+        { error: 'Failed to create note record', details: dbError.message },
         { status: 500 }
       )
     }
@@ -104,6 +187,19 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('API error:', error)
+    
+    // Handle different error types
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { 
+          error: 'Internal server error', 
+          details: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

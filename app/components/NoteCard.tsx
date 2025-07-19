@@ -3,6 +3,7 @@
 import { Note } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 import { useState } from 'react'
+import LazyAnalysisView from './LazyAnalysisView'
 
 interface NoteCardProps {
   note: Note
@@ -168,112 +169,14 @@ export default function NoteCard({ note, onDelete }: NoteCardProps) {
       </button>
 
       {/* Expanded Content */}
-      {isExpanded && note.analysis && (
-        <div className="mt-6 pt-6 border-t border-gray-200 space-y-6">
-          {/* Audio Player */}
-          {note.audio_url && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Audio</h4>
-              <audio controls className="w-full">
-                <source src={note.audio_url} />
-                Your browser does not support the audio element.
-              </audio>
-            </div>
-          )}
-
-          {/* Full Transcription */}
-          {note.transcription && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Transcription</h4>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                {note.transcription}
-              </p>
-            </div>
-          )}
-
-          {/* Sentiment Analysis */}
-          {note.analysis.sentiment && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Sentiment Analysis</h4>
-              <p className="text-sm text-gray-700">{note.analysis.sentiment.explanation}</p>
-            </div>
-          )}
-
-          {/* Key Ideas */}
-          {note.analysis.keyIdeas && note.analysis.keyIdeas.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Key Ideas</h4>
-              <ul className="list-disc list-inside space-y-1">
-                {note.analysis.keyIdeas.map((idea, index) => (
-                  <li key={index} className="text-sm text-gray-700">{idea}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Tasks */}
-          {note.analysis.tasks && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {note.analysis.tasks.myTasks && note.analysis.tasks.myTasks.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">My Tasks</h4>
-                  <ul className="list-disc list-inside space-y-1">
-                    {note.analysis.tasks.myTasks.map((task, index) => (
-                      <li key={index} className="text-sm text-gray-700">{task}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {note.analysis.tasks.delegatedTasks && note.analysis.tasks.delegatedTasks.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Delegated Tasks</h4>
-                  <div className="space-y-2">
-                    {note.analysis.tasks.delegatedTasks.map((task, index) => (
-                      <div key={index} className="text-sm">
-                        <p className="font-medium text-gray-900">{task.assignedTo}</p>
-                        <p className="text-gray-700">{task.task}</p>
-                        {task.nextSteps && (
-                          <p className="text-gray-500">Next: {task.nextSteps}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Messages to Draft */}
-          {note.analysis.messagesToDraft && note.analysis.messagesToDraft.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Messages to Draft</h4>
-              <div className="space-y-3">
-                {note.analysis.messagesToDraft.map((message, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-3">
-                    <p className="font-medium text-gray-900">To: {message.recipient}</p>
-                    <p className="font-medium text-gray-700">Subject: {message.subject}</p>
-                    <p className="text-sm text-gray-600 mt-1">{message.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Outreach Ideas */}
-          {note.analysis.outreachIdeas && note.analysis.outreachIdeas.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Outreach Ideas</h4>
-              <div className="space-y-2">
-                {note.analysis.outreachIdeas.map((idea, index) => (
-                  <div key={index} className="text-sm">
-                    <p className="font-medium text-gray-900">{idea.contact}</p>
-                    <p className="text-gray-700">{idea.topic} - {idea.purpose}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {isExpanded && (
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <LazyAnalysisView
+            noteId={note.id}
+            analysis={note.analysis}
+            transcription={note.transcription}
+            className="space-y-6"
+          />
         </div>
       )}
     </div>

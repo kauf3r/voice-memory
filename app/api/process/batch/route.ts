@@ -6,10 +6,40 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createServerClient()
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Try to get user from Authorization header first
+    let user = null
+    let authError = null
     
-    if (authError || !user) {
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (error) {
+        authError = error
+      } else {
+        user = data?.user
+        // Set the session for this request
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token
+        })
+      }
+    }
+    
+    // If no auth header or it failed, try to get from cookies
+    if (!user) {
+      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
+      user = cookieUser
+      authError = error
+    }
+    
+    // Check for service key authentication (for admin operations)
+    const serviceAuthHeader = request.headers.get('X-Service-Auth')
+    const isServiceAuth = serviceAuthHeader === 'true' && 
+                         authHeader?.includes(process.env.SUPABASE_SERVICE_KEY || '')
+    
+    if (!user && !isServiceAuth) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -26,7 +56,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`Starting batch processing for user ${user.id} with batch size ${batchSize}`)
+    const userId = user?.id || 'service-admin'
+    console.log(`Starting batch processing for user ${userId} with batch size ${batchSize}`)
 
     const result = await processingService.processNextBatch(batchSize)
 
@@ -49,8 +80,33 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createServerClient()
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Try to get user from Authorization header first
+    let user = null
+    let authError = null
+    
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (error) {
+        authError = error
+      } else {
+        user = data?.user
+        // Set the session for this request
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token
+        })
+      }
+    }
+    
+    // If no auth header or it failed, try to get from cookies
+    if (!user) {
+      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
+      user = cookieUser
+      authError = error
+    }
     
     if (authError || !user) {
       return NextResponse.json(

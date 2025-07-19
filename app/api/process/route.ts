@@ -1,15 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 import { transcribeAudio, analyzeTranscription } from '@/lib/openai'
+import { quotaManager } from '@/lib/quota-manager'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = createServerClient()
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Try to get user from Authorization header first
+    let user = null
+    let authError = null
     
-    if (authError || !user) {
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (error) {
+        authError = error
+      } else {
+        user = data?.user
+        // Set the session for this request
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token
+        })
+      }
+    }
+    
+    // If no auth header or it failed, try to get from cookies
+    if (!user) {
+      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
+      user = cookieUser
+      authError = error
+    }
+    
+    // Check for service key authentication (for admin operations)
+    const serviceAuthHeader = request.headers.get('X-Service-Auth')
+    const isServiceAuth = serviceAuthHeader === 'true' && 
+                         authHeader?.includes(process.env.SUPABASE_SERVICE_KEY || '')
+    
+    if (!user && !isServiceAuth) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -27,12 +58,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the note
-    const { data: note, error: fetchError } = await supabase
+    let noteQuery = supabase
       .from('notes')
       .select('*')
       .eq('id', noteId)
-      .eq('user_id', user.id)
-      .single()
+    
+    // If we have a user, filter by user_id. If service auth, don't filter by user.
+    if (user && !isServiceAuth) {
+      noteQuery = noteQuery.eq('user_id', user.id)
+    }
+    
+    const { data: note, error: fetchError } = await noteQuery.single()
 
     if (fetchError) {
       console.error('Note fetch error:', fetchError)
@@ -49,6 +85,25 @@ export async function POST(request: NextRequest) {
         note,
         message: 'Note already processed'
       })
+    }
+
+    // Check processing quota (skip for service auth)
+    if (user && !isServiceAuth) {
+      const quotaCheck = await quotaManager.checkProcessingQuota(user.id)
+      if (!quotaCheck.allowed) {
+        return NextResponse.json(
+          { 
+            error: 'Processing quota exceeded',
+            details: quotaCheck.reason,
+            usage: quotaCheck.usage,
+            limits: quotaCheck.limits
+          },
+          { status: 429 } // Too Many Requests
+        )
+      }
+
+      // Record processing attempt
+      await quotaManager.recordProcessingAttempt(user.id)
     }
 
     // Get audio file from storage
@@ -90,10 +145,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Get project knowledge for context
+    const userId = user?.id || note.user_id // Use note's user_id if service auth
     const { data: projectKnowledge } = await supabase
       .from('project_knowledge')
       .select('content')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     const knowledgeContext = projectKnowledge?.content ? 
@@ -168,7 +224,7 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('project_knowledge')
           .upsert({
-            user_id: user.id,
+            user_id: userId,
             content: newKnowledge,
             updated_at: new Date().toISOString(),
           })

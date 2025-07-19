@@ -4,24 +4,36 @@ import { useAuth } from './components/AuthProvider'
 import Layout, { GridContainer, GridItem } from './components/Layout'
 import { LoadingPage } from './components/LoadingSpinner'
 import LoginForm from './components/LoginForm'
+import AutoAuth from './components/AutoAuth'
 import UploadButton from './components/UploadButton'
 import NoteCard from './components/NoteCard'
 import ProcessingStatus from './components/ProcessingStatus'
 import SearchBar from './components/SearchBar'
 import { useNotes } from '@/lib/hooks/use-notes'
+import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
 import { useState } from 'react'
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth()
   const { notes, loading: notesLoading, error, totalCount, hasMore, refresh, loadMore } = useNotes()
   const [searchQuery, setSearchQuery] = useState('')
+  
+  // Infinite scroll trigger element
+  const infiniteScrollRef = useInfiniteScroll(loadMore, hasMore, notesLoading)
 
   if (authLoading) {
     return <LoadingPage />
   }
 
   if (!user) {
-    return <LoginForm />
+    return (
+      <Layout>
+        <div className="space-y-6">
+          <AutoAuth />
+          <LoginForm />
+        </div>
+      </Layout>
+    )
   }
 
   const processingCount = notes.filter(note => !note.processed_at).length
@@ -40,6 +52,19 @@ export default function Home() {
   return (
     <Layout>
       <div className="space-y-8">
+        {/* Show errors only if they occur */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded p-4">
+            <p className="text-red-700 text-sm">{error}</p>
+            <button 
+              onClick={refresh}
+              className="mt-2 text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Header Section */}
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Voice Memory</h1>
@@ -132,16 +157,22 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* Load More */}
+              {/* Infinite Scroll Trigger */}
               {hasMore && (
-                <div className="text-center">
-                  <button
-                    onClick={loadMore}
-                    disabled={notesLoading}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium"
-                  >
-                    {notesLoading ? 'Loading...' : 'Load More'}
-                  </button>
+                <div ref={infiniteScrollRef} className="text-center py-4">
+                  {notesLoading ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="ml-2 text-gray-500">Loading more notes...</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={loadMore}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                    >
+                      Load More Notes
+                    </button>
+                  )}
                 </div>
               )}
             </div>

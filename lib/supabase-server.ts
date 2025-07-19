@@ -4,14 +4,33 @@ import { cookies } from 'next/headers'
 export function createServerClient() {
   const cookieStore = cookies()
 
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    throw new Error('Missing Supabase environment variables')
+  }
+
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       auth: {
         storage: {
           getItem: (key: string) => {
-            return cookieStore.get(key)?.value
+            // Try multiple possible cookie names
+            const possibleNames = [
+              key,
+              `sb-${key}`,
+              `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-${key}`,
+            ]
+            
+            for (const name of possibleNames) {
+              const cookie = cookieStore.get(name)
+              if (cookie?.value) {
+                console.log(`Found auth cookie: ${name}`)
+                return cookie.value
+              }
+            }
+            
+            return null
           },
           setItem: () => {
             // Server-side doesn't set cookies
@@ -20,6 +39,9 @@ export function createServerClient() {
             // Server-side doesn't remove cookies
           },
         },
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
       },
     }
   )

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from './AuthProvider'
+import { supabase } from '@/lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
 import ErrorMessage from './ErrorMessage'
 
@@ -35,7 +36,20 @@ export default function ProcessingStatus({ onStatsUpdate }: ProcessingStatusProp
 
     try {
       setError(null)
-      const response = await fetch('/api/process/batch')
+      
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.access_token) {
+        throw new Error('Not authenticated')
+      }
+      
+      const response = await fetch('/api/process/batch', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch processing stats')
@@ -58,9 +72,17 @@ export default function ProcessingStatus({ onStatsUpdate }: ProcessingStatusProp
     setError(null)
 
     try {
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.access_token) {
+        throw new Error('Not authenticated')
+      }
+      
       const response = await fetch('/api/process/batch', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ batchSize: 5 }),
@@ -148,31 +170,21 @@ export default function ProcessingStatus({ onStatsUpdate }: ProcessingStatusProp
         </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="text-center">
-          <div className="text-2xl font-semibold text-gray-900">{stats.total}</div>
-          <div className="text-xs text-gray-500">Total</div>
-        </div>
-        
-        <div className="text-center">
-          <div className="text-2xl font-semibold text-yellow-600">{stats.pending}</div>
-          <div className="text-xs text-gray-500">Pending</div>
-        </div>
-        
-        <div className="text-center">
-          <div className="text-2xl font-semibold text-blue-600">{stats.processing}</div>
-          <div className="text-xs text-gray-500">Processing</div>
-        </div>
-        
-        <div className="text-center">
-          <div className="text-2xl font-semibold text-green-600">{stats.completed}</div>
-          <div className="text-xs text-gray-500">Completed</div>
-        </div>
-        
-        <div className="text-center">
-          <div className="text-2xl font-semibold text-red-600">{stats.failed}</div>
-          <div className="text-xs text-gray-500">Failed</div>
+      {/* Simplified Status Display */}
+      <div className="bg-gray-50 rounded-lg p-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <span className="text-lg font-medium text-gray-900">{stats.completed}</span>
+            <span className="text-sm text-gray-500 ml-1">processed</span>
+          </div>
+          <div>
+            <span className="text-lg font-medium text-orange-600">{stats.pending + stats.processing}</span>
+            <span className="text-sm text-gray-500 ml-1">in queue</span>
+          </div>
+          <div>
+            <span className="text-lg font-medium text-blue-600">{stats.total}</span>
+            <span className="text-sm text-gray-500 ml-1">total</span>
+          </div>
         </div>
       </div>
 
@@ -192,25 +204,17 @@ export default function ProcessingStatus({ onStatsUpdate }: ProcessingStatusProp
         </div>
       )}
 
-      {/* Status Messages */}
-      <div className="mt-4 text-sm">
+      {/* Status Message */}
+      <div className="mt-4 text-sm text-center">
         {stats.total === 0 ? (
-          <p className="text-gray-500">No notes to process</p>
-        ) : stats.pending === 0 && stats.processing === 0 && stats.failed === 0 ? (
-          <p className="text-green-600">✅ All notes processed successfully</p>
-        ) : stats.pending > 0 ? (
-          <p className="text-yellow-600">
-            ⏳ {stats.pending} note{stats.pending !== 1 ? 's' : ''} waiting to be processed
+          <p className="text-gray-500">Upload audio files to get started</p>
+        ) : stats.pending === 0 && stats.processing === 0 ? (
+          <p className="text-green-600">✅ All notes processed</p>
+        ) : (
+          <p className="text-orange-600">
+            🔄 Processing {stats.pending + stats.processing} notes...
           </p>
-        ) : stats.processing > 0 ? (
-          <p className="text-blue-600">
-            🔄 {stats.processing} note{stats.processing !== 1 ? 's' : ''} currently processing
-          </p>
-        ) : stats.failed > 0 ? (
-          <p className="text-red-600">
-            ❌ {stats.failed} note{stats.failed !== 1 ? 's' : ''} failed to process
-          </p>
-        ) : null}
+        )}
       </div>
     </div>
   )
