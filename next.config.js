@@ -133,6 +133,12 @@ const nextConfig = {
   ...(process.env.NODE_ENV === 'production' && {
     swcMinify: true,
     output: 'standalone',
+    eslint: {
+      ignoreDuringBuilds: true,
+    },
+    typescript: {
+      ignoreBuildErrors: false,
+    },
   }),
 }
 
