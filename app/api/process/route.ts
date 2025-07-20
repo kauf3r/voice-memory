@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 5: Update project knowledge (optional)
-    if (analysis?.crossReferences?.projectKnowledgeUpdates?.length > 0) {
+    if (analysis?.crossReferences?.projectKnowledgeUpdates && analysis.crossReferences.projectKnowledgeUpdates.length > 0) {
       try {
         const currentKnowledge = projectKnowledge?.content || {}
         const updates = analysis.crossReferences.projectKnowledgeUpdates

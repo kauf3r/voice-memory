@@ -173,7 +173,7 @@ export default function NoteCard({ note, onDelete }: NoteCardProps) {
         <div className="mt-6 pt-6 border-t border-gray-200">
           <LazyAnalysisView
             noteId={note.id}
-            analysis={note.analysis}
+            analysis={note.analysis || null}
             transcription={note.transcription}
             className="space-y-6"
           />

@@ -8,12 +8,12 @@ interface UseIntersectionObserverOptions {
   triggerOnce?: boolean
 }
 
-export function useIntersectionObserver(
+export function useIntersectionObserver<T extends HTMLElement = HTMLDivElement>(
   options: UseIntersectionObserverOptions = {}
 ) {
   const [isIntersecting, setIsIntersecting] = useState(false)
   const [hasIntersected, setHasIntersected] = useState(false)
-  const elementRef = useRef<HTMLElement | null>(null)
+  const elementRef = useRef<T | null>(null)
 
   const { threshold = 0.1, rootMargin = '50px', triggerOnce = false } = options
 
