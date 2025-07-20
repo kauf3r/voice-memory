@@ -8,9 +8,14 @@ import LazyAnalysisView from './LazyAnalysisView'
 interface NoteCardProps {
   note: Note
   onDelete?: (noteId: string) => void
+  onRefresh?: () => void
+  highlightFilter?: {
+    type: string
+    value: string
+  }
 }
 
-export default function NoteCard({ note, onDelete }: NoteCardProps) {
+export default function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 

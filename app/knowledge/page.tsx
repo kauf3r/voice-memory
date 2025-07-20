@@ -8,6 +8,7 @@ import LoginForm from '../components/LoginForm'
 import ErrorMessage from '../components/ErrorMessage'
 import SearchBar from '../components/SearchBar'
 import ExportButton from '../components/ExportButton'
+import FilteredNotes from '../components/FilteredNotes'
 import { supabase } from '@/lib/supabase'
 
 interface KnowledgeStats {
@@ -55,6 +56,10 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [filter, setFilter] = useState<{
+    type: 'topic' | 'contact' | 'sentiment' | 'date'
+    value: string
+  } | null>(null)
 
   const fetchKnowledge = async () => {
     if (!user) return
@@ -294,9 +299,13 @@ export default function KnowledgePage() {
             {getTopItems(knowledge.content.topTopics).map(([topic, count]) => (
               <div key={topic} className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">{topic}</span>
-                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+                <button
+                  onClick={() => setFilter({ type: 'topic', value: topic })}
+                  className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs hover:bg-blue-200 transition-colors cursor-pointer"
+                  title={`View all notes about ${topic}`}
+                >
                   {count}
-                </span>
+                </button>
               </div>
             ))}
           </div>
@@ -345,11 +354,13 @@ export default function KnowledgePage() {
     <div className="space-y-4">
       <div className="grid md:grid-cols-2 gap-4">
         {getTopItems(knowledge.content.topTopics, 20).map(([topic, count]) => (
-          <div key={topic} className="bg-blue-50 rounded-lg p-4 flex items-center justify-between">
+          <div key={topic} className="bg-blue-50 rounded-lg p-4 flex items-center justify-between hover:bg-blue-100 transition-colors cursor-pointer"
+               onClick={() => setFilter({ type: 'topic', value: topic })}>
             <span className="font-medium text-blue-900">{topic}</span>
-            <span className="bg-blue-200 text-blue-800 px-3 py-1 rounded-full text-sm">
+            <button className="bg-blue-200 text-blue-800 px-3 py-1 rounded-full text-sm hover:bg-blue-300 transition-colors"
+                    title={`View all notes about ${topic}`}>
               {count} {count === 1 ? 'note' : 'notes'}
-            </span>
+            </button>
           </div>
         ))}
       </div>
@@ -360,14 +371,16 @@ export default function KnowledgePage() {
     <div className="space-y-4">
       <div className="grid md:grid-cols-2 gap-4">
         {getTopItems(knowledge.content.keyContacts, 20).map(([contact, count]) => (
-          <div key={contact} className="bg-green-50 rounded-lg p-4 flex items-center justify-between">
+          <div key={contact} className="bg-green-50 rounded-lg p-4 flex items-center justify-between hover:bg-green-100 transition-colors cursor-pointer"
+               onClick={() => setFilter({ type: 'contact', value: contact })}>
             <div className="flex items-center gap-2">
               <span className="text-green-500">👤</span>
               <span className="font-medium text-green-900">{contact}</span>
             </div>
-            <span className="bg-green-200 text-green-800 px-3 py-1 rounded-full text-sm">
+            <button className="bg-green-200 text-green-800 px-3 py-1 rounded-full text-sm hover:bg-green-300 transition-colors"
+                    title={`View all notes mentioning ${contact}`}>
               {count} {count === 1 ? 'mention' : 'mentions'}
-            </span>
+            </button>
           </div>
         ))}
       </div>
@@ -377,11 +390,12 @@ export default function KnowledgePage() {
   const renderTimeline = () => (
     <div className="space-y-4">
       {knowledge.content.knowledgeTimeline.map((item, index) => (
-        <div key={index} className="flex gap-4">
+        <div key={index} className="flex gap-4 hover:bg-gray-50 p-3 rounded-lg transition-colors cursor-pointer"
+             onClick={() => setFilter({ type: 'date', value: item.date.split('T')[0] })}>
           <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-medium text-gray-900">
+              <span className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
                 {formatDate(item.date)}
               </span>
               <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
@@ -456,6 +470,15 @@ export default function KnowledgePage() {
           {renderContent()}
         </div>
       </div>
+
+      {/* Filtered Notes Modal */}
+      {filter && (
+        <FilteredNotes
+          filterType={filter.type}
+          filterValue={filter.value}
+          onClose={() => setFilter(null)}
+        />
+      )}
     </Layout>
   )
 }
