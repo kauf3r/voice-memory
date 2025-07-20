@@ -61,7 +61,19 @@ export default function KnowledgePage() {
 
     try {
       setError(null)
-      const response = await fetch('/api/knowledge')
+      
+      // Get the current session for auth
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session. Please log in again.')
+      }
+
+      const response = await fetch('/api/knowledge', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch knowledge data')
