@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { validateAnalysis, type ValidatedAnalysis } from './validation'
+import { buildAnalysisPrompt } from './analysis'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -83,7 +84,8 @@ export async function transcribeAudio(file: File): Promise<{ text: string | null
 
 export async function analyzeTranscription(
   transcription: string, 
-  projectKnowledge: string = ''
+  projectKnowledge: string = '',
+  recordingDate?: string
 ): Promise<{ analysis: ValidatedAnalysis | null; error: Error | null; warning?: string }> {
   try {
     // Check rate limit
@@ -93,46 +95,7 @@ export async function analyzeTranscription(
 
     console.log('Starting analysis for transcription length:', transcription.length)
 
-    const prompt = `
-Analyze this voice note transcription and extract insights in these 7 categories:
-
-1. **Sentiment Analysis**: Classify as Positive, Neutral, or Negative with explanation
-2. **Focus Topics**: Identify primary theme and two minor themes (1-2 words each)
-3. **Key Tasks**: Separate into "My Tasks" and "Tasks Assigned to Others" with assignee names
-4. **Key Ideas & Insights**: Compelling ideas or breakthrough moments
-5. **Messages to Draft**: Professional drafts with recipient, subject, and body
-6. **Cross-References**: Connections to previous notes and project knowledge updates
-7. **Outreach Ideas**: Networking opportunities with contacts, topics, and purposes
-
-Context from Project Knowledge:
-${projectKnowledge}
-
-Today's Transcription:
-${transcription}
-
-Return ONLY a valid JSON object matching this structure:
-{
-  "sentiment": {
-    "classification": "Positive|Neutral|Negative",
-    "explanation": "string"
-  },
-  "focusTopics": {
-    "primary": "string",
-    "minor": ["string", "string"]
-  },
-  "tasks": {
-    "myTasks": ["string"],
-    "delegatedTasks": [{"task": "string", "assignedTo": "string", "nextSteps": "string"}]
-  },
-  "keyIdeas": ["string"],
-  "messagesToDraft": [{"recipient": "string", "subject": "string", "body": "string"}],
-  "crossReferences": {
-    "relatedNotes": ["string"],
-    "projectKnowledgeUpdates": ["string"]
-  },
-  "outreachIdeas": [{"contact": "string", "topic": "string", "purpose": "string"}]
-}
-`
+    const prompt = buildAnalysisPrompt(transcription, projectKnowledge, recordingDate)
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4-turbo-preview',

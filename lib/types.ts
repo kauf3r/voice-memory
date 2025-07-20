@@ -48,6 +48,38 @@ export interface NoteAnalysis {
     topic: string
     purpose: string
   }>
+  structuredData: {
+    dates: Array<{
+      date: string
+      context: string
+      type: 'past' | 'future' | 'deadline' | 'meeting' | 'event'
+    }>
+    times: Array<{
+      time: string
+      context: string
+      type: 'arrival' | 'departure' | 'meeting' | 'deadline' | 'general'
+    }>
+    locations: Array<{
+      place: string
+      context: string
+      type: 'destination' | 'origin' | 'meeting_place' | 'reference'
+    }>
+    numbers: Array<{
+      value: string
+      context: string
+      type: 'quantity' | 'measurement' | 'price' | 'duration' | 'identifier'
+    }>
+    people: Array<{
+      name: string
+      context: string
+      relationship?: string
+    }>
+  }
+  recordingContext: {
+    recordedAt: string
+    extractedDate?: string
+    timeReferences: string[]
+  }
 }
 
 export interface ProjectKnowledge {

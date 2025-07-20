@@ -8,6 +8,7 @@ interface ProcessingJob {
   audio_url: string
   priority: number
   attempts: number
+  recorded_at: string
 }
 
 export class ProcessingService {
@@ -31,7 +32,7 @@ export class ProcessingService {
       // Get notes that need processing (no transcription OR no analysis)
       const { data: notes, error: notesError } = await this.supabase
         .from('notes')
-        .select('id, user_id, audio_url, transcription, analysis, processed_at')
+        .select('id, user_id, audio_url, transcription, analysis, processed_at, recorded_at')
         .or('transcription.is.null,and(transcription.not.is.null,analysis.is.null)')
         .not('audio_url', 'is', null)
         .is('processed_at', null)
@@ -162,7 +163,8 @@ export class ProcessingService {
     // Step 3: Analyze transcription
     const { analysis, error: analysisError, warning } = await analyzeTranscription(
       transcription, 
-      knowledgeContext
+      knowledgeContext,
+      job.recorded_at
     )
 
     if (analysisError) {

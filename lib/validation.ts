@@ -33,6 +33,47 @@ export const AnalysisSchema = z.object({
     topic: z.string().min(1),
     purpose: z.string().min(1),
   })).default([]),
+  structuredData: z.object({
+    dates: z.array(z.object({
+      date: z.string().min(1),
+      context: z.string().min(1),
+      type: z.enum(['past', 'future', 'deadline', 'meeting', 'event']),
+    })).default([]),
+    times: z.array(z.object({
+      time: z.string().min(1),
+      context: z.string().min(1),
+      type: z.enum(['arrival', 'departure', 'meeting', 'deadline', 'general']),
+    })).default([]),
+    locations: z.array(z.object({
+      place: z.string().min(1),
+      context: z.string().min(1),
+      type: z.enum(['destination', 'origin', 'meeting_place', 'reference']),
+    })).default([]),
+    numbers: z.array(z.object({
+      value: z.string().min(1),
+      context: z.string().min(1),
+      type: z.enum(['quantity', 'measurement', 'price', 'duration', 'identifier']),
+    })).default([]),
+    people: z.array(z.object({
+      name: z.string().min(1),
+      context: z.string().min(1),
+      relationship: z.string().optional(),
+    })).default([]),
+  }).default({
+    dates: [],
+    times: [],
+    locations: [],
+    numbers: [],
+    people: []
+  }),
+  recordingContext: z.object({
+    recordedAt: z.string().min(1),
+    extractedDate: z.string().optional(),
+    timeReferences: z.array(z.string()).default([]),
+  }).default({
+    recordedAt: new Date().toISOString(),
+    timeReferences: []
+  }),
 })
 
 export type ValidatedAnalysis = z.infer<typeof AnalysisSchema>
@@ -133,6 +174,44 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
           typeof idea.purpose === 'string'
         )
       : [],
+    structuredData: {
+      dates: Array.isArray(raw?.structuredData?.dates)
+        ? raw.structuredData.dates.filter((d: any) =>
+            d && typeof d.date === 'string' && typeof d.context === 'string'
+          )
+        : [],
+      times: Array.isArray(raw?.structuredData?.times)
+        ? raw.structuredData.times.filter((t: any) =>
+            t && typeof t.time === 'string' && typeof t.context === 'string'
+          )
+        : [],
+      locations: Array.isArray(raw?.structuredData?.locations)
+        ? raw.structuredData.locations.filter((l: any) =>
+            l && typeof l.place === 'string' && typeof l.context === 'string'
+          )
+        : [],
+      numbers: Array.isArray(raw?.structuredData?.numbers)
+        ? raw.structuredData.numbers.filter((n: any) =>
+            n && typeof n.value === 'string' && typeof n.context === 'string'
+          )
+        : [],
+      people: Array.isArray(raw?.structuredData?.people)
+        ? raw.structuredData.people.filter((p: any) =>
+            p && typeof p.name === 'string' && typeof p.context === 'string'
+          )
+        : [],
+    },
+    recordingContext: {
+      recordedAt: typeof raw?.recordingContext?.recordedAt === 'string'
+        ? raw.recordingContext.recordedAt
+        : new Date().toISOString(),
+      extractedDate: typeof raw?.recordingContext?.extractedDate === 'string'
+        ? raw.recordingContext.extractedDate
+        : undefined,
+      timeReferences: Array.isArray(raw?.recordingContext?.timeReferences)
+        ? raw.recordingContext.timeReferences.filter((ref: any) => typeof ref === 'string')
+        : [],
+    },
   }
 }
 
