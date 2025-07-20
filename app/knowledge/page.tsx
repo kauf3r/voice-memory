@@ -174,14 +174,27 @@ export default function KnowledgePage() {
     )
   }
 
-  if (!knowledge) {
+  if (!knowledge || !knowledge.stats || knowledge.stats.totalNotes === 0) {
     return (
       <Layout>
         <div className="text-center py-12">
-          <p className="text-gray-500">No knowledge data available yet.</p>
-          <p className="text-sm text-gray-400 mt-2">
-            Process some voice notes to build your knowledge base.
-          </p>
+          <div className="max-w-md mx-auto">
+            <div className="mb-4">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Knowledge Available</h3>
+            <p className="text-gray-500 mb-4">
+              Your knowledge base is empty. Upload and process some voice notes to build your insights.
+            </p>
+            <a
+              href="/"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Upload Voice Notes
+            </a>
+          </div>
         </div>
       </Layout>
     )
@@ -202,6 +215,7 @@ export default function KnowledgePage() {
   }
 
   const getSentimentPercentage = (sentiment: keyof KnowledgeStats['sentimentDistribution']) => {
+    if (!knowledge?.stats?.sentimentDistribution) return 0
     const total = Object.values(knowledge.stats.sentimentDistribution).reduce((sum, count) => sum + count, 0)
     return total > 0 ? Math.round((knowledge.stats.sentimentDistribution[sentiment] / total) * 100) : 0
   }
@@ -219,23 +233,23 @@ export default function KnowledgePage() {
       {/* Key Stats */}
       <GridContainer className="lg:grid-cols-5">
         <GridItem className="p-4 text-center">
-          <div className="text-2xl font-bold text-blue-600">{knowledge.stats.totalNotes}</div>
+          <div className="text-2xl font-bold text-blue-600">{knowledge?.stats?.totalNotes || 0}</div>
           <div className="text-sm text-gray-500">Total Notes</div>
         </GridItem>
         <GridItem className="p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">{knowledge.stats.totalInsights}</div>
+          <div className="text-2xl font-bold text-green-600">{knowledge?.stats?.totalInsights || 0}</div>
           <div className="text-sm text-gray-500">Key Insights</div>
         </GridItem>
         <GridItem className="p-4 text-center">
-          <div className="text-2xl font-bold text-purple-600">{knowledge.stats.totalTasks}</div>
+          <div className="text-2xl font-bold text-purple-600">{knowledge?.stats?.totalTasks || 0}</div>
           <div className="text-sm text-gray-500">Tasks</div>
         </GridItem>
         <GridItem className="p-4 text-center">
-          <div className="text-2xl font-bold text-orange-600">{knowledge.stats.totalMessages}</div>
+          <div className="text-2xl font-bold text-orange-600">{knowledge?.stats?.totalMessages || 0}</div>
           <div className="text-sm text-gray-500">Messages</div>
         </GridItem>
         <GridItem className="p-4 text-center">
-          <div className="text-2xl font-bold text-red-600">{knowledge.stats.totalOutreach}</div>
+          <div className="text-2xl font-bold text-red-600">{knowledge?.stats?.totalOutreach || 0}</div>
           <div className="text-sm text-gray-500">Outreach</div>
         </GridItem>
       </GridContainer>
@@ -313,7 +327,7 @@ export default function KnowledgePage() {
       </GridContainer>
 
       {/* Time Range */}
-      {knowledge.stats.timeRange.earliest && knowledge.stats.timeRange.latest && (
+      {knowledge?.stats?.timeRange?.earliest && knowledge?.stats?.timeRange?.latest && (
         <GridItem className="p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Knowledge Span</h3>
           <div className="flex items-center justify-between text-sm text-gray-600">
@@ -389,23 +403,26 @@ export default function KnowledgePage() {
 
   const renderTimeline = () => (
     <div className="space-y-4">
-      {(knowledge.content?.knowledgeTimeline || []).map((item, index) => (
-        <div key={index} className="flex gap-4 hover:bg-gray-50 p-3 rounded-lg transition-colors cursor-pointer"
-             onClick={() => setFilter({ type: 'date', value: item.date.split('T')[0] })}>
-          <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
-                {formatDate(item.date)}
-              </span>
-              <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
-                {item.type}
-              </span>
+      {(knowledge.content?.knowledgeTimeline || []).map((item, index) => {
+        if (!item || !item.date) return null
+        return (
+          <div key={index} className="flex gap-4 hover:bg-gray-50 p-3 rounded-lg transition-colors cursor-pointer"
+               onClick={() => setFilter({ type: 'date', value: item.date.split('T')[0] })}>
+            <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                  {formatDate(item.date)}
+                </span>
+                <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                  {item.type}
+                </span>
+              </div>
+              <p className="text-sm text-gray-700">{item.content}</p>
             </div>
-            <p className="text-sm text-gray-700">{item.content}</p>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 
@@ -427,12 +444,12 @@ export default function KnowledgePage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Project Knowledge</h1>
             <p className="text-gray-600 mt-1">
-              Aggregated insights from {knowledge.stats.totalNotes} voice notes
+              Aggregated insights from {knowledge?.stats?.totalNotes || 0} voice notes
             </p>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-500">
-              Last updated: {formatDate(knowledge.lastUpdated)}
+              Last updated: {knowledge?.lastUpdated ? formatDate(knowledge.lastUpdated) : 'Never'}
             </div>
             <ExportButton onExport={handleExport} />
           </div>

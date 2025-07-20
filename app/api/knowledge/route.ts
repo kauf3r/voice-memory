@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     // Get aggregated knowledge from all processed notes
     const { data: notes, error: notesError } = await supabase
       .from('notes')
-      .select('analysis, transcription, recorded_at, processed_at')
+      .select('id, analysis, transcription, recorded_at, processed_at')
       .eq('user_id', user.id)
       .not('analysis', 'is', null)
       .order('recorded_at', { ascending: false })
@@ -73,7 +73,31 @@ export async function GET(request: NextRequest) {
     // Aggregate data from all notes with error handling
     let aggregatedData
     try {
-      aggregatedData = aggregateKnowledgeFromNotes(notes || [])
+      // Handle empty notes case
+      if (!notes || notes.length === 0) {
+        aggregatedData = {
+          stats: {
+            totalNotes: 0,
+            totalInsights: 0,
+            totalTasks: 0,
+            totalMessages: 0,
+            totalOutreach: 0,
+            sentimentDistribution: { positive: 0, neutral: 0, negative: 0 },
+            timeRange: { earliest: null, latest: null }
+          },
+          content: {
+            recentInsights: [],
+            topTopics: {},
+            keyContacts: {},
+            commonTasks: {},
+            sentimentTrends: [],
+            knowledgeTimeline: []
+          },
+          generatedAt: new Date().toISOString()
+        }
+      } else {
+        aggregatedData = aggregateKnowledgeFromNotes(notes)
+      }
     } catch (aggregateError) {
       console.error('Error aggregating knowledge data:', aggregateError)
       // Return a safe default structure
