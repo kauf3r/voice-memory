@@ -296,7 +296,7 @@ export default function KnowledgePage() {
         <GridItem className="p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Top Topics</h3>
           <div className="space-y-2">
-            {getTopItems(knowledge.content.topTopics).map(([topic, count]) => (
+            {getTopItems(knowledge.content?.topTopics || {}).map(([topic, count]) => (
               <div key={topic} className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">{topic}</span>
                 <button
@@ -331,9 +331,9 @@ export default function KnowledgePage() {
 
   const renderInsights = () => (
     <div className="space-y-4">
-      {knowledge.content.recentInsights.length > 0 ? (
+      {(knowledge.content?.recentInsights || []).length > 0 ? (
         <div className="space-y-3">
-          {knowledge.content.recentInsights.map((insight, index) => (
+          {(knowledge.content?.recentInsights || []).map((insight, index) => (
             <div key={index} className="bg-yellow-50 rounded-lg p-4 border-l-4 border-yellow-400">
               <div className="flex items-start gap-3">
                 <span className="text-yellow-500 text-xl">💡</span>
@@ -353,14 +353,14 @@ export default function KnowledgePage() {
   const renderTopics = () => (
     <div className="space-y-4">
       <div className="grid md:grid-cols-2 gap-4">
-        {getTopItems(knowledge.content.topTopics, 20).map(([topic, count]) => (
+        {getTopItems(knowledge.content?.topTopics || {}, 20).map(([topic, count]) => (
           <div key={topic} className="bg-blue-50 rounded-lg p-4 flex items-center justify-between hover:bg-blue-100 transition-colors cursor-pointer"
                onClick={() => setFilter({ type: 'topic', value: topic })}>
             <span className="font-medium text-blue-900">{topic}</span>
-            <button className="bg-blue-200 text-blue-800 px-3 py-1 rounded-full text-sm hover:bg-blue-300 transition-colors"
-                    title={`View all notes about ${topic}`}>
+            <span className="bg-blue-200 text-blue-800 px-3 py-1 rounded-full text-sm hover:bg-blue-300 transition-colors"
+                  title={`View all notes about ${topic}`}>
               {count} {count === 1 ? 'note' : 'notes'}
-            </button>
+            </span>
           </div>
         ))}
       </div>
@@ -370,17 +370,17 @@ export default function KnowledgePage() {
   const renderContacts = () => (
     <div className="space-y-4">
       <div className="grid md:grid-cols-2 gap-4">
-        {getTopItems(knowledge.content.keyContacts, 20).map(([contact, count]) => (
+        {getTopItems(knowledge.content?.keyContacts || {}, 20).map(([contact, count]) => (
           <div key={contact} className="bg-green-50 rounded-lg p-4 flex items-center justify-between hover:bg-green-100 transition-colors cursor-pointer"
                onClick={() => setFilter({ type: 'contact', value: contact })}>
             <div className="flex items-center gap-2">
               <span className="text-green-500">👤</span>
               <span className="font-medium text-green-900">{contact}</span>
             </div>
-            <button className="bg-green-200 text-green-800 px-3 py-1 rounded-full text-sm hover:bg-green-300 transition-colors"
-                    title={`View all notes mentioning ${contact}`}>
+            <span className="bg-green-200 text-green-800 px-3 py-1 rounded-full text-sm hover:bg-green-300 transition-colors"
+                  title={`View all notes mentioning ${contact}`}>
               {count} {count === 1 ? 'mention' : 'mentions'}
-            </button>
+            </span>
           </div>
         ))}
       </div>
@@ -389,7 +389,7 @@ export default function KnowledgePage() {
 
   const renderTimeline = () => (
     <div className="space-y-4">
-      {knowledge.content.knowledgeTimeline.map((item, index) => (
+      {(knowledge.content?.knowledgeTimeline || []).map((item, index) => (
         <div key={index} className="flex gap-4 hover:bg-gray-50 p-3 rounded-lg transition-colors cursor-pointer"
              onClick={() => setFilter({ type: 'date', value: item.date.split('T')[0] })}>
           <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
