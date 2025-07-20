@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import SupabaseInspector from '../components/SupabaseInspector'
 
 export default function DebugFrontend() {
@@ -27,9 +27,8 @@ export default function DebugFrontend() {
       nodeEnv: process.env.NODE_ENV
     }
 
-    // 2. Test Supabase client creation
+    // 2. Test Supabase client inspection
     try {
-      const supabase = createClientComponentClient()
       results.supabaseClient = {
         created: true,
         type: typeof supabase,
@@ -100,7 +99,6 @@ export default function DebugFrontend() {
 
   const testMagicLink = async () => {
     try {
-      const supabase = createClientComponentClient()
       const { data, error } = await supabase.auth.signInWithOtp({
         email: 'andy@andykaufman.net',
         options: {

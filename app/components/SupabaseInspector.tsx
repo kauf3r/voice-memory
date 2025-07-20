@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 
 export default function SupabaseInspector() {
   const [results, setResults] = useState<any>({})
@@ -22,15 +22,10 @@ export default function SupabaseInspector() {
         keyValid: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.startsWith('eyJ')
       }
 
-      // Step 2: Client creation with detailed error handling
-      let supabase: any = null
+      // Step 2: Client inspection (using existing client)
       try {
-        console.log('Creating Supabase client with:', {
-          url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          keyStart: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 20)
-        })
+        console.log('Inspecting existing Supabase client...')
         
-        supabase = createClientComponentClient()
         inspection.step2_client_creation = {
           success: true,
           clientType: typeof supabase,
@@ -46,77 +41,76 @@ export default function SupabaseInspector() {
         }
       }
 
-      if (supabase) {
-        // Step 3: Auth object inspection
-        try {
-          inspection.step3_auth_object = {
-            exists: !!supabase.auth,
-            methods: supabase.auth ? Object.getOwnPropertyNames(Object.getPrototypeOf(supabase.auth)) : [],
-            getSession: typeof supabase.auth?.getSession,
-            signInWithOtp: typeof supabase.auth?.signInWithOtp
-          }
-        } catch (err) {
-          inspection.step3_auth_object = {
-            error: err instanceof Error ? err.message : String(err)
-          }
+      // Continue with existing client
+      // Step 3: Auth object inspection
+      try {
+        inspection.step3_auth_object = {
+          exists: !!supabase.auth,
+          methods: supabase.auth ? Object.getOwnPropertyNames(Object.getPrototypeOf(supabase.auth)) : [],
+          getSession: typeof supabase.auth?.getSession,
+          signInWithOtp: typeof supabase.auth?.signInWithOtp
         }
-
-        // Step 4: Session retrieval test
-        try {
-          console.log('Testing getSession...')
-          const sessionResult = await supabase.auth.getSession()
-          inspection.step4_session_test = {
-            success: true,
-            hasSession: !!sessionResult.data.session,
-            user: sessionResult.data.session?.user?.email || null,
-            error: sessionResult.error?.message || null,
-            errorCode: sessionResult.error?.code || null
-          }
-        } catch (err) {
-          inspection.step4_session_test = {
-            success: false,
-            error: err instanceof Error ? err.message : String(err),
-            stack: err instanceof Error ? err.stack?.substring(0, 500) : null
-          }
+      } catch (err) {
+        inspection.step3_auth_object = {
+          error: err instanceof Error ? err.message : String(err)
         }
+      }
 
-        // Step 5: Database query test (without auth)
-        try {
-          console.log('Testing database query...')
-          const { data, error } = await supabase.from('notes').select('count').limit(1)
-          inspection.step5_database_test = {
-            success: !error,
-            error: error?.message || null,
-            errorCode: error?.code || null,
-            errorDetails: error?.details || null,
-            errorHint: error?.hint || null,
-            dataReceived: !!data
-          }
-        } catch (err) {
-          inspection.step5_database_test = {
-            success: false,
-            error: err instanceof Error ? err.message : String(err)
-          }
+      // Step 4: Session retrieval test
+      try {
+        console.log('Testing getSession...')
+        const sessionResult = await supabase.auth.getSession()
+        inspection.step4_session_test = {
+          success: true,
+          hasSession: !!sessionResult.data.session,
+          user: sessionResult.data.session?.user?.email || null,
+          error: sessionResult.error?.message || null,
+          errorCode: sessionResult.error?.code || null
         }
+      } catch (err) {
+        inspection.step4_session_test = {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack?.substring(0, 500) : null
+        }
+      }
 
-        // Step 6: Manual auth test with detailed logging
-        try {
-          console.log('Testing manual auth...')
-          const authResponse = await supabase.auth.signInWithOtp({
-            email: 'test@example.com',
-            options: { shouldCreateUser: false }
-          })
-          inspection.step6_auth_test = {
-            success: !authResponse.error,
-            error: authResponse.error?.message || null,
-            errorCode: authResponse.error?.code || null,
-            data: authResponse.data ? 'received' : 'none'
-          }
-        } catch (err) {
-          inspection.step6_auth_test = {
-            success: false,
-            error: err instanceof Error ? err.message : String(err)
-          }
+      // Step 5: Database query test (without auth)
+      try {
+        console.log('Testing database query...')
+        const { data, error } = await supabase.from('notes').select('count').limit(1)
+        inspection.step5_database_test = {
+          success: !error,
+          error: error?.message || null,
+          errorCode: error?.code || null,
+          errorDetails: error?.details || null,
+          errorHint: error?.hint || null,
+          dataReceived: !!data
+        }
+      } catch (err) {
+        inspection.step5_database_test = {
+          success: false,
+          error: err instanceof Error ? err.message : String(err)
+        }
+      }
+
+      // Step 6: Manual auth test with detailed logging
+      try {
+        console.log('Testing manual auth...')
+        const authResponse = await supabase.auth.signInWithOtp({
+          email: 'test@example.com',
+          options: { shouldCreateUser: false }
+        })
+        inspection.step6_auth_test = {
+          success: !authResponse.error,
+          error: authResponse.error?.message || null,
+          errorCode: authResponse.error?.code || null,
+          data: authResponse.data ? 'received' : 'none'
+        }
+      } catch (err) {
+        inspection.step6_auth_test = {
+          success: false,
+          error: err instanceof Error ? err.message : String(err)
         }
       }
 
