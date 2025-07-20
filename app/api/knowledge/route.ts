@@ -70,8 +70,34 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch project knowledge:', knowledgeError)
     }
 
-    // Aggregate data from all notes
-    const aggregatedData = aggregateKnowledgeFromNotes(notes || [])
+    // Aggregate data from all notes with error handling
+    let aggregatedData
+    try {
+      aggregatedData = aggregateKnowledgeFromNotes(notes || [])
+    } catch (aggregateError) {
+      console.error('Error aggregating knowledge data:', aggregateError)
+      // Return a safe default structure
+      aggregatedData = {
+        stats: {
+          totalNotes: notes?.length || 0,
+          totalInsights: 0,
+          totalTasks: 0,
+          totalMessages: 0,
+          totalOutreach: 0,
+          sentimentDistribution: { positive: 0, neutral: 0, negative: 0 },
+          timeRange: { earliest: null, latest: null }
+        },
+        content: {
+          recentInsights: [],
+          topTopics: {},
+          keyContacts: {},
+          commonTasks: {},
+          sentimentTrends: [],
+          knowledgeTimeline: []
+        },
+        generatedAt: new Date().toISOString()
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -209,78 +235,104 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
   }
 
   for (const note of notes) {
-    const analysis = note.analysis
-    if (!analysis) continue
+    try {
+      const analysis = note.analysis
+      if (!analysis) continue
 
-    // Update stats
-    if (analysis.keyIdeas) {
-      stats.totalInsights += analysis.keyIdeas.length
-      aggregatedContent.recentInsights.push(...analysis.keyIdeas)
-    }
-
-    if (analysis.tasks?.myTasks) {
-      stats.totalTasks += analysis.tasks.myTasks.length
-      analysis.tasks.myTasks.forEach((task: string) => {
-        aggregatedContent.commonTasks[task] = (aggregatedContent.commonTasks[task] || 0) + 1
-      })
-    }
-
-    if (analysis.tasks?.delegatedTasks) {
-      stats.totalTasks += analysis.tasks.delegatedTasks.length
-    }
-
-    if (analysis.messagesToDraft) {
-      stats.totalMessages += analysis.messagesToDraft.length
-    }
-
-    if (analysis.outreachIdeas) {
-      stats.totalOutreach += analysis.outreachIdeas.length
-      analysis.outreachIdeas.forEach((idea: any) => {
-        aggregatedContent.keyContacts[idea.contact] = (aggregatedContent.keyContacts[idea.contact] || 0) + 1
-      })
-    }
-
-    // Sentiment distribution
-    if (analysis.sentiment?.classification) {
-      const sentiment = analysis.sentiment.classification.toLowerCase()
-      if (sentiment in stats.sentimentDistribution) {
-        stats.sentimentDistribution[sentiment as keyof typeof stats.sentimentDistribution]++
+      // Update stats
+      if (analysis.keyIdeas) {
+        stats.totalInsights += analysis.keyIdeas.length
+        aggregatedContent.recentInsights.push(...analysis.keyIdeas)
       }
-      
-      aggregatedContent.sentimentTrends.push({
-        date: note.recorded_at,
-        sentiment: analysis.sentiment.classification
-      })
-    }
 
-    // Topics
-    if (analysis.focusTopics?.primary) {
-      aggregatedContent.topTopics[analysis.focusTopics.primary] = 
-        (aggregatedContent.topTopics[analysis.focusTopics.primary] || 0) + 1
-    }
+      if (analysis.tasks?.myTasks) {
+        stats.totalTasks += analysis.tasks.myTasks.length
+        analysis.tasks.myTasks.forEach((task: string) => {
+          aggregatedContent.commonTasks[task] = (aggregatedContent.commonTasks[task] || 0) + 1
+        })
+      }
 
-    if (analysis.focusTopics?.minor) {
-      analysis.focusTopics.minor.forEach((topic: string) => {
-        aggregatedContent.topTopics[topic] = (aggregatedContent.topTopics[topic] || 0) + 1
-      })
-    }
+      if (analysis.tasks?.delegatedTasks) {
+        stats.totalTasks += analysis.tasks.delegatedTasks.length
+      }
 
-    // Timeline
-    if (analysis.keyIdeas?.length > 0) {
-      aggregatedContent.knowledgeTimeline.push({
-        date: note.recorded_at,
-        type: 'insight',
-        content: analysis.keyIdeas[0], // Just the first insight for timeline
-        noteId: note.id
-      })
-    }
+      if (analysis.messagesToDraft) {
+        stats.totalMessages += analysis.messagesToDraft.length
+      }
 
-    // Time range
-    if (!stats.timeRange.earliest || note.recorded_at < stats.timeRange.earliest) {
-      stats.timeRange.earliest = note.recorded_at
-    }
-    if (!stats.timeRange.latest || note.recorded_at > stats.timeRange.latest) {
-      stats.timeRange.latest = note.recorded_at
+      if (analysis.outreachIdeas) {
+        stats.totalOutreach += analysis.outreachIdeas.length
+        analysis.outreachIdeas.forEach((idea: any) => {
+          if (idea.contact) {
+            aggregatedContent.keyContacts[idea.contact] = (aggregatedContent.keyContacts[idea.contact] || 0) + 1
+          }
+        })
+      }
+
+      // Handle structured data people (new format) with backward compatibility
+      if (analysis.structuredData?.people) {
+        analysis.structuredData.people.forEach((person: any) => {
+          if (person.name) {
+            aggregatedContent.keyContacts[person.name] = (aggregatedContent.keyContacts[person.name] || 0) + 1
+          }
+        })
+      }
+
+      // Handle message drafts for contacts
+      if (analysis.messagesToDraft) {
+        analysis.messagesToDraft.forEach((message: any) => {
+          if (message.recipient) {
+            aggregatedContent.keyContacts[message.recipient] = (aggregatedContent.keyContacts[message.recipient] || 0) + 1
+          }
+        })
+      }
+
+      // Sentiment distribution
+      if (analysis.sentiment?.classification) {
+        const sentiment = analysis.sentiment.classification.toLowerCase()
+        if (sentiment in stats.sentimentDistribution) {
+          stats.sentimentDistribution[sentiment as keyof typeof stats.sentimentDistribution]++
+        }
+        
+        aggregatedContent.sentimentTrends.push({
+          date: note.recorded_at,
+          sentiment: analysis.sentiment.classification
+        })
+      }
+
+      // Topics
+      if (analysis.focusTopics?.primary) {
+        aggregatedContent.topTopics[analysis.focusTopics.primary] = 
+          (aggregatedContent.topTopics[analysis.focusTopics.primary] || 0) + 1
+      }
+
+      if (analysis.focusTopics?.minor) {
+        analysis.focusTopics.minor.forEach((topic: string) => {
+          aggregatedContent.topTopics[topic] = (aggregatedContent.topTopics[topic] || 0) + 1
+        })
+      }
+
+      // Timeline
+      if (analysis.keyIdeas?.length > 0) {
+        aggregatedContent.knowledgeTimeline.push({
+          date: note.recorded_at,
+          type: 'insight',
+          content: analysis.keyIdeas[0], // Just the first insight for timeline
+          noteId: note.id
+        })
+      }
+
+      // Time range
+      if (!stats.timeRange.earliest || note.recorded_at < stats.timeRange.earliest) {
+        stats.timeRange.earliest = note.recorded_at
+      }
+      if (!stats.timeRange.latest || note.recorded_at > stats.timeRange.latest) {
+        stats.timeRange.latest = note.recorded_at
+      }
+    } catch (noteError) {
+      console.error('Error processing note:', note.id, noteError)
+      // Continue with next note instead of failing completely
+      continue
     }
   }
 
