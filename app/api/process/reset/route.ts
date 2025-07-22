@@ -41,13 +41,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Resetting stuck processing jobs...')
-    const result = await processingService.resetStuckProcessing()
+    const body = await request.json().catch(() => ({}))
+    const { forceReset = false } = body
+
+    console.log(`Resetting stuck processing jobs... (forceReset: ${forceReset})`)
+    const result = await processingService.resetStuckProcessing(forceReset)
 
     return NextResponse.json({
       success: true,
       message: `Reset ${result.reset} stuck processing jobs`,
-      reset: result.reset
+      reset: result.reset,
+      forceReset
     })
 
   } catch (error) {

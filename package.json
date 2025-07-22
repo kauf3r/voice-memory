@@ -17,7 +17,12 @@
     "typecheck": "tsc --noEmit",
     "precommit": "npm run format:check && npm run lint && npm run typecheck",
     "watch-uploads": "tsx scripts/auto-uploader.ts",
-    "generate-auth": "tsx scripts/generate-auth-token.ts"
+    "generate-auth": "tsx scripts/generate-auth-token.ts",
+    "diagnose-stuck": "tsx scripts/diagnose-stuck-notes.ts",
+    "fix-stuck-notes": "tsx scripts/fix-stuck-notes.ts",
+    "check-db-schema": "tsx scripts/check-db-schema.ts",
+    "trigger-processing": "tsx scripts/trigger-processing.ts",
+    "process-directly": "tsx scripts/direct-processing.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

@@ -13,29 +13,22 @@ interface ProcessingJob {
 
 export class ProcessingService {
   private supabase = createServiceClient()
-  private isProcessing = false
 
   async processNextBatch(batchSize: number = 5): Promise<{
     processed: number
     failed: number
     errors: string[]
   }> {
-    if (this.isProcessing) {
-      console.log('Processing already in progress, skipping...')
-      return { processed: 0, failed: 0, errors: ['Processing already in progress'] }
-    }
-
-    this.isProcessing = true
     console.log(`Starting batch processing (max ${batchSize} items)`)
 
     try {
-      // Get notes that need processing (no transcription OR no analysis)
+      // Get notes that need processing (no processed_at timestamp)
       const { data: notes, error: notesError } = await this.supabase
         .from('notes')
         .select('id, user_id, audio_url, transcription, analysis, processed_at, recorded_at')
-        .or('transcription.is.null,and(transcription.not.is.null,analysis.is.null)')
         .not('audio_url', 'is', null)
         .is('processed_at', null)
+        .order('created_at', { ascending: true })
         .limit(batchSize)
 
       if (notesError) {
@@ -79,14 +72,14 @@ export class ProcessingService {
         }
 
         // Small delay between jobs to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        await new Promise(resolve => setTimeout(resolve, 500))
       }
 
       console.log(`Batch processing completed: ${processed} successful, ${failed} failed`)
       return { processed, failed, errors }
 
     } finally {
-      this.isProcessing = false
+      console.log('Batch processing finished')
     }
   }
 
@@ -263,31 +256,48 @@ export class ProcessingService {
     }
   }
 
-  async resetStuckProcessing(): Promise<{ reset: number }> {
+  async resetStuckProcessing(forceReset: boolean = false): Promise<{ reset: number }> {
     try {
-      // Find notes that might be stuck in processing
-      // (have transcription but no analysis and no processed_at after 10 minutes)
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      let stuckNotes
       
-      const { data: stuckNotes, error } = await this.supabase
-        .from('notes')
-        .select('id')
-        .not('transcription', 'is', null)
-        .is('analysis', null)
-        .is('processed_at', null)
-        .lt('created_at', tenMinutesAgo)
+      if (forceReset) {
+        // Force reset ALL unprocessed notes
+        console.log('Force resetting all unprocessed notes...')
+        const { data, error } = await this.supabase
+          .from('notes')
+          .select('id')
+          .is('processed_at', null)
+          .not('audio_url', 'is', null)
+        
+        stuckNotes = data
+      } else {
+        // Find notes that might be stuck in processing
+        // (have transcription but no analysis and no processed_at after 5 minutes)
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+        
+        const { data, error } = await this.supabase
+          .from('notes')
+          .select('id, created_at, transcription, analysis')
+          .is('processed_at', null)
+          .not('audio_url', 'is', null)
+          .or('transcription.not.is.null,updated_at.lt.' + fiveMinutesAgo)
+        
+        stuckNotes = data
+      }
 
-      if (error || !stuckNotes || stuckNotes.length === 0) {
+      if (!stuckNotes || stuckNotes.length === 0) {
+        console.log('No stuck notes found')
         return { reset: 0 }
       }
 
       console.log(`Found ${stuckNotes.length} stuck notes, resetting for retry...`)
       
-      // Reset transcription to null so they get picked up by the queue again
+      // Reset both transcription and analysis to null for a clean retry
       const { error: resetError } = await this.supabase
         .from('notes')
         .update({ 
           transcription: null,
+          analysis: null,
           updated_at: new Date().toISOString()
         })
         .in('id', stuckNotes.map(n => n.id))
@@ -297,6 +307,7 @@ export class ProcessingService {
         return { reset: 0 }
       }
 
+      console.log(`Successfully reset ${stuckNotes.length} notes`)
       return { reset: stuckNotes.length }
     } catch (error) {
       console.error('Error in resetStuckProcessing:', error)
