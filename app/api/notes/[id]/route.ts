@@ -8,12 +8,33 @@ export async function GET(
   try {
     const supabase = createServerClient()
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Get auth token from header
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    let user = null
     
-    if (authError || !user) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (!error && data?.user) {
+        user = data.user
+        // Set the session for this request
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token
+        })
+      }
+    }
+    
+    // If no auth header, try cookies
+    if (!user) {
+      const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
+      user = cookieUser
+    }
+    
+    if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Authentication failed. Please log in.' },
         { status: 401 }
       )
     }
@@ -57,12 +78,32 @@ export async function PUT(
   try {
     const supabase = createServerClient()
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Get auth token from header
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    let user = null
     
-    if (authError || !user) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (!error && data?.user) {
+        user = data.user
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token
+        })
+      }
+    }
+    
+    // If no auth header, try cookies
+    if (!user) {
+      const { data: { user: cookieUser } } = await supabase.auth.getUser()
+      user = cookieUser
+    }
+    
+    if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Authentication failed. Please log in.' },
         { status: 401 }
       )
     }
@@ -114,12 +155,32 @@ export async function DELETE(
   try {
     const supabase = createServerClient()
     
-    // Get the current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Get auth token from header
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    let user = null
     
-    if (authError || !user) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data, error } = await supabase.auth.getUser(token)
+      
+      if (!error && data?.user) {
+        user = data.user
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: token
+        })
+      }
+    }
+    
+    // If no auth header, try cookies
+    if (!user) {
+      const { data: { user: cookieUser } } = await supabase.auth.getUser()
+      user = cookieUser
+    }
+    
+    if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Authentication failed. Please log in.' },
         { status: 401 }
       )
     }
