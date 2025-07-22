@@ -15,7 +15,9 @@
     "test:supabase": "tsx scripts/test-supabase.ts",
     "test:openai": "tsx scripts/test-openai.ts",
     "typecheck": "tsc --noEmit",
-    "precommit": "npm run format:check && npm run lint && npm run typecheck"
+    "precommit": "npm run format:check && npm run lint && npm run typecheck",
+    "watch-uploads": "tsx scripts/auto-uploader.ts",
+    "generate-auth": "tsx scripts/generate-auth-token.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -23,6 +25,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",
+    "chokidar": "^4.0.3",
     "critters": "^0.0.23",
     "date-fns": "^3.0.0",
     "next": "14.1.0",
