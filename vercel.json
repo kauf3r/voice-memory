@@ -5,7 +5,7 @@
   "outputDirectory": ".next",
   "functions": {
     "app/api/**/*.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
   "regions": ["iad1"],

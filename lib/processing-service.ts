@@ -263,6 +263,47 @@ export class ProcessingService {
     }
   }
 
+  async resetStuckProcessing(): Promise<{ reset: number }> {
+    try {
+      // Find notes that might be stuck in processing
+      // (have transcription but no analysis and no processed_at after 10 minutes)
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      
+      const { data: stuckNotes, error } = await this.supabase
+        .from('notes')
+        .select('id')
+        .not('transcription', 'is', null)
+        .is('analysis', null)
+        .is('processed_at', null)
+        .lt('created_at', tenMinutesAgo)
+
+      if (error || !stuckNotes || stuckNotes.length === 0) {
+        return { reset: 0 }
+      }
+
+      console.log(`Found ${stuckNotes.length} stuck notes, resetting for retry...`)
+      
+      // Reset transcription to null so they get picked up by the queue again
+      const { error: resetError } = await this.supabase
+        .from('notes')
+        .update({ 
+          transcription: null,
+          updated_at: new Date().toISOString()
+        })
+        .in('id', stuckNotes.map(n => n.id))
+
+      if (resetError) {
+        console.error('Error resetting stuck notes:', resetError)
+        return { reset: 0 }
+      }
+
+      return { reset: stuckNotes.length }
+    } catch (error) {
+      console.error('Error in resetStuckProcessing:', error)
+      return { reset: 0 }
+    }
+  }
+
   async getProcessingStats(userId: string): Promise<{
     total: number
     pending: number
@@ -271,10 +312,13 @@ export class ProcessingService {
     failed: number
   }> {
     try {
+      // First, reset any stuck processing
+      await this.resetStuckProcessing()
+      
       // Get all notes for the user
       const { data: notes, error } = await this.supabase
         .from('notes')
-        .select('transcription, analysis, processed_at')
+        .select('transcription, analysis, processed_at, created_at')
         .eq('user_id', userId)
 
       if (error) {
