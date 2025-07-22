@@ -106,9 +106,43 @@ export default function LazyAnalysisView({
         />
       )}
 
-      {!loadedAnalysis && !loading && !error && hasIntersected && (
-        <div className="text-center py-8 text-gray-500">
-          <p>No analysis available for this note</p>
+      {!loadedAnalysis && !loading && !error && hasIntersected && transcription && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">
+          <div className="flex items-center justify-center mb-3">
+            <svg className="h-6 w-6 text-orange-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-orange-700 font-medium">Analysis Incomplete</p>
+          </div>
+          <p className="text-sm text-orange-600 mb-4">
+            Your audio was transcribed successfully, but the AI analysis failed to complete.
+          </p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-orange-600 hover:bg-orange-700 text-white text-sm px-4 py-2 rounded-md font-medium"
+          >
+            Retry Analysis
+          </button>
+        </div>
+      )}
+
+      {!loadedAnalysis && !loading && !error && hasIntersected && !transcription && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <div className="flex items-center justify-center mb-3">
+            <svg className="h-6 w-6 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-red-700 font-medium">Processing Failed</p>
+          </div>
+          <p className="text-sm text-red-600 mb-4">
+            This note failed to process completely. Both transcription and analysis are missing.
+          </p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded-md font-medium"
+          >
+            Try Again
+          </button>
         </div>
       )}
 

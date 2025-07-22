@@ -161,12 +161,12 @@ export class ProcessingService {
     )
 
     if (analysisError) {
-      // Save transcription even if analysis failed
+      // Save transcription but DON'T mark as processed if analysis failed
       await this.supabase
         .from('notes')
         .update({
-          transcription,
-          processed_at: new Date().toISOString(),
+          transcription
+          // Note: NOT setting processed_at since analysis failed
         })
         .eq('id', job.note_id)
 

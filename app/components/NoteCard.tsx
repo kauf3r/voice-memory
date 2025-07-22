@@ -75,16 +75,36 @@ export default function NoteCard({ note, onDelete, onRefresh, highlightFilter }:
   }
 
   const getStatusColor = () => {
-    if (note.processed_at) {
+    // Fully completed: has transcription AND analysis
+    if (note.transcription && note.analysis) {
       return 'bg-green-100 text-green-800'
     }
+    // Failed: marked processed but missing both transcription and analysis
+    if (note.processed_at && !note.transcription && !note.analysis) {
+      return 'bg-red-100 text-red-800'
+    }
+    // Partial: has transcription but missing analysis
+    if (note.transcription && !note.analysis) {
+      return 'bg-orange-100 text-orange-800'
+    }
+    // Still processing
     return 'bg-yellow-100 text-yellow-800'
   }
 
   const getStatusText = () => {
-    if (note.processed_at) {
+    // Fully completed: has transcription AND analysis
+    if (note.transcription && note.analysis) {
       return 'Processed'
     }
+    // Failed: marked processed but missing both transcription and analysis
+    if (note.processed_at && !note.transcription && !note.analysis) {
+      return 'Failed'
+    }
+    // Partial: has transcription but missing analysis
+    if (note.transcription && !note.analysis) {
+      return 'Analyzing'
+    }
+    // Still processing
     return 'Processing'
   }
 
@@ -168,12 +188,22 @@ export default function NoteCard({ note, onDelete, onRefresh, highlightFilter }:
         </div>
       )}
 
-      {/* Transcription Preview */}
-      {note.transcription && (
+      {/* Content Display */}
+      {note.transcription ? (
         <div className="mb-4">
           <p className="text-sm text-gray-700 line-clamp-3">
             {note.transcription}
           </p>
+        </div>
+      ) : note.processed_at ? (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-700 font-medium">Processing Failed</p>
+          <p className="text-xs text-red-600 mt-1">This note failed to transcribe properly. Try re-uploading the audio file.</p>
+        </div>
+      ) : (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm text-yellow-700 font-medium">Processing Audio...</p>
+          <p className="text-xs text-yellow-600 mt-1">Your audio is being transcribed and analyzed.</p>
         </div>
       )}
 
