@@ -42,3 +42,16 @@ next-env.d.ts
 
 # PNPM
 pnpm-lock.yaml
+
+# Audio files (exclude from audio-exports folder)
+audio-exports/*.mp3
+audio-exports/*.m4a
+audio-exports/*.wav
+audio-exports/*.aac
+audio-exports/*.ogg
+audio-exports/*.webm
+audio-exports/*.mp4
+audio-exports/processed/
+
+# Voice Memory auth token
+.voice-memory-auth

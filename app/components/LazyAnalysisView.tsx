@@ -5,6 +5,7 @@ import { useIntersectionObserver } from '@/lib/hooks/use-intersection-observer'
 import AnalysisView from './AnalysisView'
 import LoadingSpinner from './LoadingSpinner'
 import { NoteAnalysis } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
 
 interface LazyAnalysisViewProps {
   noteId: string
@@ -46,13 +47,29 @@ export default function LazyAnalysisView({
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/notes/${noteId}`)
+      // Get the current session for auth
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        throw new Error('Authentication required. Please log in.')
+      }
+
+      const response = await fetch(`/api/notes/${noteId}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to load analysis')
       }
 
       const data = await response.json()
-      setLoadedAnalysis(data.note.analysis)
+      setLoadedAnalysis(data.analysis)
     } catch (err) {
       console.error('Error loading analysis:', err)
       setError(err instanceof Error ? err.message : 'Failed to load analysis')

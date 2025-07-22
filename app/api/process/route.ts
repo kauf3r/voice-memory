@@ -120,7 +120,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert blob to File object for Whisper API
-    const audioFile = new File([audioData], 'audio.mp3', { type: 'audio/mpeg' })
+    const mimeType = getMimeTypeFromUrl(note.audio_url)
+    const extension = note.audio_url.split('.').pop() || 'mp3'
+    const audioFile = new File([audioData], `audio.${extension}`, { type: mimeType })
 
     // Step 1: Transcribe audio
     console.log('Starting transcription for note:', noteId)
@@ -361,4 +363,19 @@ function getFilePathFromUrl(url: string): string {
     console.error('Error extracting file path from URL:', url, error)
     return ''
   }
+}
+
+// Helper function to determine MIME type from file extension
+function getMimeTypeFromUrl(url: string): string {
+  const extension = url.split('.').pop()?.toLowerCase()
+  const mimeTypes: Record<string, string> = {
+    'mp3': 'audio/mpeg',
+    'm4a': 'audio/mp4',
+    'wav': 'audio/wav',
+    'aac': 'audio/aac',
+    'ogg': 'audio/ogg',
+    'webm': 'audio/webm',
+    'mp4': 'audio/mp4'
+  }
+  return mimeTypes[extension || ''] || 'audio/mpeg'
 }

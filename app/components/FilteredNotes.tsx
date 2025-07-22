@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Note } from '@/lib/types'
 import NoteCard from './NoteCard'
-import { LoadingSpinner } from './LoadingSpinner'
+import LoadingSpinner from './LoadingSpinner'
 
 interface FilteredNotesProps {
   filterType: 'topic' | 'contact' | 'sentiment' | 'date'

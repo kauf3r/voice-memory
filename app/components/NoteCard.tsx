@@ -4,6 +4,7 @@ import { Note } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 import { useState } from 'react'
 import LazyAnalysisView from './LazyAnalysisView'
+import { supabase } from '@/lib/supabase'
 
 interface NoteCardProps {
   note: Note
@@ -26,8 +27,19 @@ export default function NoteCard({ note, onDelete, onRefresh, highlightFilter }:
 
     setIsDeleting(true)
     try {
+      // Get the current session for auth
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        throw new Error('Authentication required. Please log in.')
+      }
+
       const response = await fetch(`/api/notes/${note.id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
       })
 
       if (!response.ok) {
@@ -37,7 +49,7 @@ export default function NoteCard({ note, onDelete, onRefresh, highlightFilter }:
       onDelete?.(note.id)
     } catch (error) {
       console.error('Delete error:', error)
-      alert('Failed to delete note')
+      alert(error instanceof Error ? error.message : 'Failed to delete note')
     } finally {
       setIsDeleting(false)
     }
