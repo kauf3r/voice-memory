@@ -297,8 +297,7 @@ export class ProcessingService {
         .from('notes')
         .update({ 
           transcription: null,
-          analysis: null,
-          updated_at: new Date().toISOString()
+          analysis: null
         })
         .in('id', stuckNotes.map(n => n.id))
 
