@@ -30,18 +30,14 @@ export default function LazyAnalysisView({
   })
 
   useEffect(() => {
-    console.log(`LazyAnalysisView effect - noteId: ${noteId}, hasAnalysis: ${!!analysis}, hasIntersected: ${hasIntersected}`)
-    
     // If analysis is already provided, use it
     if (analysis) {
-      console.log('Using provided analysis:', analysis)
       setLoadedAnalysis(analysis)
       return
     }
 
     // Load analysis when component becomes visible
     if (hasIntersected && !loadedAnalysis && !loading) {
-      console.log('Loading analysis via API for noteId:', noteId)
       loadAnalysis()
     }
   }, [hasIntersected, analysis, loadedAnalysis, loading])
@@ -73,10 +69,6 @@ export default function LazyAnalysisView({
       }
 
       const data = await response.json()
-      console.log('API response data:', data)
-      console.log('Analysis from API:', data.analysis)
-      
-      // data is the full note object, so extract the analysis field
       setLoadedAnalysis(data.analysis || null)
     } catch (err) {
       console.error('Error loading analysis:', err)
