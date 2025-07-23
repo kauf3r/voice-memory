@@ -1,23 +1,23 @@
 import { z } from 'zod'
 
-// Zod schema for validating GPT-4 analysis results
+// Zod schema for validating GPT-4 analysis results - More flexible validation
 export const AnalysisSchema = z.object({
   sentiment: z.object({
     classification: z.enum(['Positive', 'Neutral', 'Negative']),
-    explanation: z.string().min(1),
-  }),
+    explanation: z.string().min(1).optional(),
+  }).optional(),
   focusTopics: z.object({
     primary: z.string().min(1),
-    minor: z.array(z.string().min(1)).length(2),
-  }),
+    minor: z.array(z.string().min(1)).min(0).max(5).default([]), // Allow 0-5 minor topics
+  }).optional(),
   tasks: z.object({
     myTasks: z.array(z.string().min(1)).default([]),
     delegatedTasks: z.array(z.object({
       task: z.string().min(1),
-      assignedTo: z.string().min(1),
-      nextSteps: z.string().min(1),
+      assignedTo: z.string().min(1).optional(),
+      nextSteps: z.string().min(1).optional(),
     })).default([]),
-  }),
+  }).optional(),
   keyIdeas: z.array(z.string().min(1)).default([]),
   messagesToDraft: z.array(z.object({
     recipient: z.string().min(1),
@@ -27,7 +27,7 @@ export const AnalysisSchema = z.object({
   crossReferences: z.object({
     relatedNotes: z.array(z.string().min(1)).default([]),
     projectKnowledgeUpdates: z.array(z.string().min(1)).default([]),
-  }),
+  }).optional(),
   outreachIdeas: z.array(z.object({
     contact: z.string().min(1),
     topic: z.string().min(1),
