@@ -1,25 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from './AuthProvider'
-import { supabase } from '@/lib/supabase'
-import LoadingSpinner from './LoadingSpinner'
-import ErrorMessage from './ErrorMessage'
-
-interface ProcessingStats {
-  total: number
-  pending: number
-  processing: number
-  completed: number
-  failed: number
-}
+import { createClient } from '@/lib/supabase'
+import { ProcessingStats } from '@/lib/types'
 
 interface ProcessingStatusProps {
-  onStatsUpdate?: (stats: ProcessingStats) => void
+  userId?: string
+  onRefresh?: () => void
 }
 
-export default function ProcessingStatus({ onStatsUpdate }: ProcessingStatusProps) {
-  const { user } = useAuth()
+export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
   const [stats, setStats] = useState<ProcessingStats>({
     total: 0,
     pending: 0,
@@ -27,195 +17,228 @@ export default function ProcessingStatus({ onStatsUpdate }: ProcessingStatusProp
     completed: 0,
     failed: 0
   })
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
 
   const fetchStats = async () => {
-    if (!user) return
+    if (!userId) return
 
     try {
+      setIsLoading(true)
       setError(null)
-      
-      // Get current session for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session?.access_token) {
-        throw new Error('Not authenticated')
-      }
-      
-      const response = await fetch('/api/process/batch', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch processing stats')
+
+      const supabase = createClient()
+      const { data, error: fetchError } = await supabase
+        .from('notes')
+        .select('processed_at, processing_started_at, error_message, created_at')
+        .eq('user_id', userId)
+
+      if (fetchError) {
+        throw fetchError
       }
 
-      const data = await response.json()
-      setStats(data.stats)
-      onStatsUpdate?.(data.stats)
+      if (!data) {
+        setStats({ total: 0, pending: 0, processing: 0, completed: 0, failed: 0 })
+        return
+      }
+
+      const total = data.length
+      let pending = 0
+      let processing = 0
+      let completed = 0
+      let failed = 0
+
+      // Calculate stats with proper lock awareness
+      data.forEach(note => {
+        if (note.processed_at) {
+          // Has processed_at timestamp = completed
+          completed++
+        } else if (note.error_message) {
+          // Has error message = failed
+          failed++
+        } else if (note.processing_started_at) {
+          // Has processing lock = actively processing
+          processing++
+        } else {
+          // No lock, no error, not processed = pending
+          pending++
+        }
+      })
+
+      setStats({
+        total,
+        pending,
+        processing,
+        completed,
+        failed
+      })
     } catch (err) {
+      console.error('Failed to fetch processing stats:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch stats')
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const triggerBatchProcessing = async () => {
-    if (!user || isProcessing) return
-
-    setIsProcessing(true)
-    setError(null)
-
-    try {
-      // Get current session for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session?.access_token) {
-        throw new Error('Not authenticated')
-      }
-      
-      const response = await fetch('/api/process/batch', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ batchSize: 5 }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Batch processing failed')
-      }
-
-      const result = await response.json()
-      
-      if (result.errors && result.errors.length > 0) {
-        console.warn('Processing completed with errors:', result.errors)
-      }
-
-      // Refresh stats after processing
-      await fetchStats()
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Batch processing failed')
-    } finally {
-      setIsProcessing(false)
+      setIsLoading(false)
     }
   }
 
   useEffect(() => {
     fetchStats()
-    
-    // Auto-refresh stats every 30 seconds
-    const interval = setInterval(fetchStats, 30000)
-    return () => clearInterval(interval)
-  }, [user])
+  }, [userId])
 
-  if (!user) return null
+  useEffect(() => {
+    if (onRefresh) {
+      fetchStats()
+    }
+  }, [onRefresh])
 
-  if (loading) {
+  const handleManualRefresh = () => {
+    fetchStats()
+  }
+
+  if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-center">
-          <LoadingSpinner size="sm" />
-          <span className="ml-2 text-sm text-gray-600">Loading processing status...</span>
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Processing Status</h3>
+        <div className="animate-pulse">
+          <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
         </div>
       </div>
     )
   }
 
-  const hasPendingWork = stats.pending > 0 || stats.processing > 0
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-medium text-gray-900">Processing Status</h3>
-        <div className="flex items-center gap-2">
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Processing Status</h3>
+        <div className="text-red-600 text-sm">
+          Error: {error}
           <button
-            onClick={fetchStats}
-            disabled={loading}
-            className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+            onClick={handleManualRefresh}
+            className="ml-2 text-blue-600 hover:text-blue-800 underline"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            Retry
           </button>
-          {hasPendingWork && (
-            <button
-              onClick={triggerBatchProcessing}
-              disabled={isProcessing}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-3 py-1 rounded-md font-medium"
-            >
-              {isProcessing ? (
-                <div className="flex items-center">
-                  <LoadingSpinner size="sm" />
-                  <span className="ml-1">Processing...</span>
-                </div>
-              ) : (
-                'Process Now'
-              )}
-            </button>
-          )}
         </div>
       </div>
+    )
+  }
 
-      {error && (
-        <div className="mb-4">
-          <ErrorMessage message={error} onRetry={() => setError(null)} />
-        </div>
-      )}
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
+      case 'processing': return 'text-blue-600 bg-blue-50 border-blue-200'
+      case 'completed': return 'text-green-600 bg-green-50 border-green-200'
+      case 'failed': return 'text-red-600 bg-red-50 border-red-200'
+      default: return 'text-gray-600 bg-gray-50 border-gray-200'
+    }
+  }
 
-      {/* Simplified Status Display */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <span className="text-lg font-medium text-gray-900">{stats.completed}</span>
-            <span className="text-sm text-gray-500 ml-1">processed</span>
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return '⏳'
+      case 'processing': return '🔄'
+      case 'completed': return '✅'
+      case 'failed': return '❌'
+      default: return '📊'
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium text-gray-900">Processing Status</h3>
+        <button
+          onClick={handleManualRefresh}
+          className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
+          title="Refresh status"
+        >
+          🔄 Refresh
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {/* Total */}
+        <div className="flex items-center justify-between p-3 border rounded-lg bg-gray-50 border-gray-200">
+          <div className="flex items-center">
+            <span className="mr-2">📊</span>
+            <span className="font-medium text-gray-900">Total Notes</span>
           </div>
-          <div>
-            <span className="text-lg font-medium text-orange-600">{stats.pending + stats.processing}</span>
-            <span className="text-sm text-gray-500 ml-1">in queue</span>
-          </div>
-          <div>
-            <span className="text-lg font-medium text-blue-600">{stats.total}</span>
-            <span className="text-sm text-gray-500 ml-1">total</span>
-          </div>
+          <span className="text-gray-900 font-semibold">{stats.total}</span>
         </div>
+
+        {/* Pending */}
+        <div className={`flex items-center justify-between p-3 border rounded-lg ${getStatusColor('pending')}`}>
+          <div className="flex items-center">
+            <span className="mr-2">{getStatusIcon('pending')}</span>
+            <span className="font-medium">Pending</span>
+            <span className="ml-1 text-xs opacity-75">(waiting to process)</span>
+          </div>
+          <span className="font-semibold">{stats.pending}</span>
+        </div>
+
+        {/* Processing */}
+        <div className={`flex items-center justify-between p-3 border rounded-lg ${getStatusColor('processing')}`}>
+          <div className="flex items-center">
+            <span className="mr-2">{getStatusIcon('processing')}</span>
+            <span className="font-medium">Processing</span>
+            <span className="ml-1 text-xs opacity-75">(actively being processed)</span>
+          </div>
+          <span className="font-semibold">{stats.processing}</span>
+        </div>
+
+        {/* Completed */}
+        <div className={`flex items-center justify-between p-3 border rounded-lg ${getStatusColor('completed')}`}>
+          <div className="flex items-center">
+            <span className="mr-2">{getStatusIcon('completed')}</span>
+            <span className="font-medium">Completed</span>
+          </div>
+          <span className="font-semibold">{stats.completed}</span>
+        </div>
+
+        {/* Failed */}
+        {stats.failed > 0 && (
+          <div className={`flex items-center justify-between p-3 border rounded-lg ${getStatusColor('failed')}`}>
+            <div className="flex items-center">
+              <span className="mr-2">{getStatusIcon('failed')}</span>
+              <span className="font-medium">Failed</span>
+            </div>
+            <span className="font-semibold">{stats.failed}</span>
+          </div>
+        )}
       </div>
 
       {/* Progress Bar */}
       {stats.total > 0 && (
         <div className="mt-4">
-          <div className="flex justify-between text-sm text-gray-600 mb-1">
-            <span>Progress</span>
-            <span>{Math.round((stats.completed / stats.total) * 100)}%</span>
+          <div className="flex text-xs text-gray-600 mb-2">
+            <span>Progress: {stats.completed} of {stats.total} completed</span>
+            {stats.processing > 0 && (
+              <span className="ml-auto text-blue-600">
+                {stats.processing} currently processing
+              </span>
+            )}
           </div>
-          <div className="bg-gray-200 rounded-full h-2">
-            <div 
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
               className="bg-green-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${(stats.completed / stats.total) * 100}%` }}
-            />
+            ></div>
           </div>
         </div>
       )}
 
-      {/* Status Message */}
-      <div className="mt-4 text-sm text-center">
-        {stats.total === 0 ? (
-          <p className="text-gray-500">Upload audio files to get started</p>
-        ) : stats.pending === 0 && stats.processing === 0 ? (
-          <p className="text-green-600">✅ All notes processed</p>
-        ) : (
-          <p className="text-orange-600">
-            🔄 Processing {stats.pending + stats.processing} notes...
-          </p>
-        )}
-      </div>
+      {/* Processing lock info */}
+      {stats.processing > 0 && (
+        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+          <div className="flex items-center">
+            <span className="mr-1">🔒</span>
+            <span>
+              Notes marked as "processing" are currently locked to prevent 
+              concurrent processing. They will complete automatically or timeout after 15 minutes.
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

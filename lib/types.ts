@@ -14,6 +14,40 @@ export interface Note {
   recorded_at: string
   processed_at?: string
   created_at: string
+  // Error tracking fields
+  error_message?: string
+  processing_attempts?: number
+  last_error_at?: string
+  // Processing lock field
+  processing_started_at?: string
+}
+
+export interface ProcessingError {
+  id: string
+  note_id: string
+  error_message: string
+  error_type?: string
+  stack_trace?: string
+  processing_attempt: number
+  created_at: string
+}
+
+export interface ProcessingResult {
+  success: boolean
+  error?: string
+  warning?: string
+  transcription?: string
+  analysis?: NoteAnalysis
+}
+
+export interface ProcessingStats {
+  total: number
+  pending: number
+  processing: number
+  completed: number
+  failed: number
+  error_rate?: number
+  avg_processing_time?: number
 }
 
 export interface NoteAnalysis {

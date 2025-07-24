@@ -1,7 +1,196 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
-import { transcribeAudio, analyzeTranscription } from '@/lib/openai'
+import { processingService } from '@/lib/processing-service'
 import { quotaManager } from '@/lib/quota-manager'
+
+// Error categorization and mapping
+interface ErrorResponse {
+  error: string
+  details?: string
+  code?: string
+  retryAfter?: number
+  usage?: any
+  limits?: any
+}
+
+enum ErrorType {
+  VALIDATION = 'VALIDATION',
+  AUTHENTICATION = 'AUTHENTICATION',
+  AUTHORIZATION = 'AUTHORIZATION',
+  NOT_FOUND = 'NOT_FOUND',
+  RATE_LIMIT = 'RATE_LIMIT',
+  QUOTA_EXCEEDED = 'QUOTA_EXCEEDED',
+  EXTERNAL_SERVICE = 'EXTERNAL_SERVICE',
+  STORAGE = 'STORAGE',
+  PROCESSING = 'PROCESSING',
+  INTERNAL = 'INTERNAL'
+}
+
+function categorizeError(error: any): { type: ErrorType; statusCode: number; response: ErrorResponse } {
+  const errorMessage = error instanceof Error ? error.message : String(error)
+  const lowerMessage = errorMessage.toLowerCase()
+
+  // Authentication errors
+  if (lowerMessage.includes('unauthorized') || lowerMessage.includes('authentication failed') || 
+      lowerMessage.includes('invalid token') || lowerMessage.includes('token expired')) {
+    return {
+      type: ErrorType.AUTHENTICATION,
+      statusCode: 401,
+      response: {
+        error: 'Authentication required',
+        details: 'Please log in to continue',
+        code: 'AUTH_REQUIRED'
+      }
+    }
+  }
+
+  // Authorization errors
+  if (lowerMessage.includes('forbidden') || lowerMessage.includes('access denied') || 
+      lowerMessage.includes('insufficient permissions')) {
+    return {
+      type: ErrorType.AUTHORIZATION,
+      statusCode: 403,
+      response: {
+        error: 'Access denied',
+        details: 'You do not have permission to perform this action',
+        code: 'ACCESS_DENIED'
+      }
+    }
+  }
+
+  // Not found errors
+  if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist') || 
+      lowerMessage.includes('no rows returned')) {
+    return {
+      type: ErrorType.NOT_FOUND,
+      statusCode: 404,
+      response: {
+        error: 'Resource not found',
+        details: 'The requested note or resource could not be found',
+        code: 'NOT_FOUND'
+      }
+    }
+  }
+
+      // External service errors (OpenAI, etc.) - check before rate limits
+    if (lowerMessage.includes('openai') || lowerMessage.includes('api key') || 
+        lowerMessage.includes('invalid file') || lowerMessage.includes('file too large') ||
+        lowerMessage.includes('transcription failed') || lowerMessage.includes('analysis failed')) {
+      return {
+        type: ErrorType.EXTERNAL_SERVICE,
+        statusCode: 502,
+        response: {
+          error: 'External service error',
+          details: 'The processing service is temporarily unavailable. Please try again later.',
+          code: 'EXTERNAL_SERVICE_ERROR'
+        }
+      }
+    }
+
+    // Rate limit errors
+    if (lowerMessage.includes('rate limit') || lowerMessage.includes('too many requests') || 
+        lowerMessage.includes('rate_limit_exceeded')) {
+      return {
+        type: ErrorType.RATE_LIMIT,
+        statusCode: 429,
+        response: {
+          error: 'Rate limit exceeded',
+          details: 'Too many requests. Please wait before trying again.',
+          code: 'RATE_LIMIT_EXCEEDED',
+          retryAfter: 60 // 1 minute
+        }
+      }
+    }
+
+    // Quota exceeded errors
+    if (lowerMessage.includes('quota exceeded') || lowerMessage.includes('processing quota') || 
+        lowerMessage.includes('storage limit') || lowerMessage.includes('maximum')) {
+      return {
+        type: ErrorType.QUOTA_EXCEEDED,
+        statusCode: 429,
+        response: {
+          error: 'Quota exceeded',
+          details: 'You have reached your processing limit. Please wait or upgrade your plan.',
+          code: 'QUOTA_EXCEEDED'
+        }
+      }
+    }
+
+  // Storage errors
+  if (lowerMessage.includes('storage') || lowerMessage.includes('file') || 
+      lowerMessage.includes('audio file') || lowerMessage.includes('download')) {
+    return {
+      type: ErrorType.STORAGE,
+      statusCode: 500,
+      response: {
+        error: 'Storage error',
+        details: 'Unable to access the audio file. Please try again or contact support.',
+        code: 'STORAGE_ERROR'
+      }
+    }
+  }
+
+  // Processing errors
+  if (lowerMessage.includes('processing') || lowerMessage.includes('analysis') || 
+      lowerMessage.includes('transcription') || lowerMessage.includes('validation')) {
+    return {
+      type: ErrorType.PROCESSING,
+      statusCode: 422,
+      response: {
+        error: 'Processing failed',
+        details: 'Unable to process the audio file. Please check the file format and try again.',
+        code: 'PROCESSING_ERROR'
+      }
+    }
+  }
+
+  // Validation errors
+  if (lowerMessage.includes('validation') || lowerMessage.includes('invalid') || 
+      lowerMessage.includes('required') || lowerMessage.includes('missing')) {
+    return {
+      type: ErrorType.VALIDATION,
+      statusCode: 400,
+      response: {
+        error: 'Invalid request',
+        details: errorMessage,
+        code: 'VALIDATION_ERROR'
+      }
+    }
+  }
+
+  // Default internal error
+  return {
+    type: ErrorType.INTERNAL,
+    statusCode: 500,
+    response: {
+      error: 'Internal server error',
+      details: 'An unexpected error occurred. Please try again later.',
+      code: 'INTERNAL_ERROR'
+    }
+  }
+}
+
+function createErrorResponse(error: any, additionalData?: any): NextResponse {
+  const { type, statusCode, response } = categorizeError(error)
+  
+  // Add additional data if provided
+  if (additionalData) {
+    Object.assign(response, additionalData)
+  }
+
+  // Add retry-after header for rate limit errors
+  const headers: Record<string, string> = {}
+  if (type === ErrorType.RATE_LIMIT && response.retryAfter) {
+    headers['Retry-After'] = response.retryAfter.toString()
+  }
+
+  console.error(`[${type}] Processing error:`, error)
+  
+  return NextResponse.json(response, { 
+    status: statusCode,
+    headers
+  })
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,23 +230,17 @@ export async function POST(request: NextRequest) {
                          authHeader?.includes(process.env.SUPABASE_SERVICE_KEY || '')
     
     if (!user && !isServiceAuth) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return createErrorResponse(new Error('Unauthorized'))
     }
 
     const body = await request.json()
     const { noteId, forceReprocess = false } = body
 
     if (!noteId) {
-      return NextResponse.json(
-        { error: 'noteId is required' },
-        { status: 400 }
-      )
+      return createErrorResponse(new Error('noteId is required'))
     }
 
-    // Get the note
+    // Get the note to verify it exists and get user_id for quota checking
     let noteQuery = supabase
       .from('notes')
       .select('*')
@@ -72,10 +255,7 @@ export async function POST(request: NextRequest) {
 
     if (fetchError) {
       console.error('Note fetch error:', fetchError)
-      return NextResponse.json(
-        { error: 'Note not found' },
-        { status: 404 }
-      )
+      return createErrorResponse(new Error('Note not found'))
     }
 
     // Check if already processed
@@ -91,14 +271,13 @@ export async function POST(request: NextRequest) {
     if (user && !isServiceAuth) {
       const quotaCheck = await quotaManager.checkProcessingQuota(user.id)
       if (!quotaCheck.allowed) {
-        return NextResponse.json(
-          { 
-            error: 'Processing quota exceeded',
+        return createErrorResponse(
+          new Error('Processing quota exceeded'),
+          {
             details: quotaCheck.reason,
             usage: quotaCheck.usage,
             limits: quotaCheck.limits
-          },
-          { status: 429 } // Too Many Requests
+          }
         )
       }
 
@@ -106,134 +285,24 @@ export async function POST(request: NextRequest) {
       await quotaManager.recordProcessingAttempt(user.id)
     }
 
-    // Get audio file from storage
-    const { data: audioData, error: storageError } = await supabase.storage
-      .from('audio-files')
-      .download(getFilePathFromUrl(note.audio_url))
-
-    if (storageError || !audioData) {
-      console.error('Storage error:', storageError)
-      return NextResponse.json(
-        { error: 'Could not retrieve audio file' },
-        { status: 500 }
-      )
-    }
-
-    // Convert blob to File object for Whisper API
-    const mimeType = getMimeTypeFromUrl(note.audio_url)
-    const extension = note.audio_url.split('.').pop() || 'mp3'
-    const audioFile = new File([audioData], `audio.${extension}`, { type: mimeType })
-
-    // Step 1: Transcribe audio
-    console.log('Starting transcription for note:', noteId)
-    const { text: transcription, error: transcriptionError } = await transcribeAudio(audioFile)
-
-    if (transcriptionError || !transcription) {
-      console.error('Transcription failed:', transcriptionError)
-      
-      // Update note with error status
-      await supabase
-        .from('notes')
-        .update({
-          processed_at: new Date().toISOString(),
-          // Could add an error field to track failures
-        })
-        .eq('id', noteId)
-
-      return NextResponse.json(
-        { error: transcriptionError?.message || 'Transcription failed' },
-        { status: 500 }
-      )
-    }
-
-    // Step 2: Get project knowledge for context
+    // Delegate processing to the service
     const userId = user?.id || note.user_id // Use note's user_id if service auth
-    const { data: projectKnowledge } = await supabase
-      .from('project_knowledge')
-      .select('content')
-      .eq('user_id', userId)
-      .single()
+    const result = await processingService.processNote(noteId, userId, forceReprocess)
 
-    const knowledgeContext = projectKnowledge?.content ? 
-      JSON.stringify(projectKnowledge.content) : 
-      ''
-
-    // Step 3: Analyze transcription
-    console.log('Starting analysis for note:', noteId)
-    const { analysis, error: analysisError } = await analyzeTranscription(
-      transcription, 
-      knowledgeContext
-    )
-
-    if (analysisError) {
-      console.error('Analysis failed:', analysisError)
-      
-      // Update note with transcription but no analysis
-      const { data: updatedNote } = await supabase
-        .from('notes')
-        .update({
-          transcription,
-          processed_at: new Date().toISOString(),
-        })
-        .eq('id', noteId)
-        .select()
-        .single()
-
-      return NextResponse.json({
-        success: false,
-        note: updatedNote,
-        error: analysisError.message,
-        message: 'Transcription completed but analysis failed'
-      })
+    if (!result.success) {
+      return createErrorResponse(new Error(result.error || 'Processing failed'))
     }
 
-    // Step 4: Update note with results
+    // Get updated note
     const { data: updatedNote, error: updateError } = await supabase
       .from('notes')
-      .update({
-        transcription,
-        analysis,
-        processed_at: new Date().toISOString(),
-      })
+      .select('*')
       .eq('id', noteId)
-      .select()
       .single()
 
     if (updateError) {
-      console.error('Update error:', updateError)
-      return NextResponse.json(
-        { error: 'Failed to save processing results' },
-        { status: 500 }
-      )
-    }
-
-    // Step 5: Update project knowledge (optional)
-    if (analysis?.crossReferences?.projectKnowledgeUpdates && analysis.crossReferences.projectKnowledgeUpdates.length > 0) {
-      try {
-        const currentKnowledge = projectKnowledge?.content || {}
-        const updates = analysis.crossReferences.projectKnowledgeUpdates
-        
-        // Simple knowledge update - in production, this would be more sophisticated
-        const newKnowledge = {
-          ...currentKnowledge,
-          lastUpdated: new Date().toISOString(),
-          recentInsights: [
-            ...(currentKnowledge.recentInsights || []),
-            ...updates
-          ].slice(-50) // Keep last 50 insights
-        }
-
-        await supabase
-          .from('project_knowledge')
-          .upsert({
-            user_id: userId,
-            content: newKnowledge,
-            updated_at: new Date().toISOString(),
-          })
-      } catch (knowledgeError) {
-        console.warn('Failed to update project knowledge:', knowledgeError)
-        // Don't fail the whole process for this
-      }
+      console.error('Error fetching updated note:', updateError)
+      return createErrorResponse(new Error('Failed to fetch updated note'))
     }
 
     console.log('Processing completed successfully for note:', noteId)
@@ -241,15 +310,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       note: updatedNote,
-      message: 'Processing completed successfully'
+      message: 'Processing completed successfully',
+      warning: result.warning
     })
 
   } catch (error) {
-    console.error('Processing error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error during processing' },
-      { status: 500 }
-    )
+    return createErrorResponse(error)
   }
 }
 
@@ -262,120 +328,21 @@ export async function PUT(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return createErrorResponse(new Error('Unauthorized'))
     }
 
-    // Get unprocessed notes
-    const { data: unprocessedNotes, error: fetchError } = await supabase
-      .from('notes')
-      .select('id')
-      .eq('user_id', user.id)
-      .is('processed_at', null)
-      .limit(5) // Process up to 5 notes at a time
-
-    if (fetchError) {
-      console.error('Fetch error:', fetchError)
-      return NextResponse.json(
-        { error: 'Failed to fetch unprocessed notes' },
-        { status: 500 }
-      )
-    }
-
-    if (!unprocessedNotes || unprocessedNotes.length === 0) {
-      return NextResponse.json({
-        success: true,
-        processed: 0,
-        message: 'No notes to process'
-      })
-    }
-
-    console.log(`Starting batch processing of ${unprocessedNotes.length} notes`)
-
-    // Process notes sequentially to avoid rate limiting
-    const results = []
-    for (const note of unprocessedNotes) {
-      try {
-        // Call the single note processing
-        const processResponse = await fetch(`${request.nextUrl.origin}/api/process`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // Forward auth headers
-            'Authorization': request.headers.get('Authorization') || '',
-            'Cookie': request.headers.get('Cookie') || '',
-          },
-          body: JSON.stringify({ noteId: note.id })
-        })
-
-        const result = await processResponse.json()
-        results.push({
-          noteId: note.id,
-          success: result.success,
-          error: result.error
-        })
-
-        // Small delay between requests to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-      } catch (error) {
-        console.error(`Failed to process note ${note.id}:`, error)
-        results.push({
-          noteId: note.id,
-          success: false,
-          error: 'Processing failed'
-        })
-      }
-    }
-
-    const successCount = results.filter(r => r.success).length
-    const failureCount = results.filter(r => !r.success).length
+    // Delegate batch processing to the service
+    const batchResult = await processingService.processNextBatch(5)
 
     return NextResponse.json({
       success: true,
-      processed: successCount,
-      failed: failureCount,
-      results,
-      message: `Batch processing completed: ${successCount} successful, ${failureCount} failed`
+      processed: batchResult.processed,
+      failed: batchResult.failed,
+      errors: batchResult.errors,
+      message: `Batch processing completed: ${batchResult.processed} successful, ${batchResult.failed} failed`
     })
 
   } catch (error) {
-    console.error('Batch processing error:', error)
-    return NextResponse.json(
-      { error: 'Batch processing failed' },
-      { status: 500 }
-    )
+    return createErrorResponse(error)
   }
-}
-
-// Helper function to extract file path from Supabase storage URL
-function getFilePathFromUrl(url: string): string {
-  try {
-    const urlObj = new URL(url)
-    const pathParts = urlObj.pathname.split('/')
-    const bucketIndex = pathParts.indexOf('audio-files')
-    if (bucketIndex === -1) return ''
-    
-    return pathParts.slice(bucketIndex + 1).join('/')
-  } catch (error) {
-    console.error('Error extracting file path from URL:', url, error)
-    return ''
-  }
-}
-
-// Helper function to determine MIME type from file extension
-function getMimeTypeFromUrl(url: string): string {
-  const extension = url.split('.').pop()?.toLowerCase()
-  const mimeTypes: Record<string, string> = {
-    'mp3': 'audio/mpeg',
-    'm4a': 'audio/mp4',
-    'wav': 'audio/wav',
-    'aac': 'audio/aac',
-    'ogg': 'audio/ogg',
-    'webm': 'audio/webm',
-    'mp4': 'audio/mp4'
-  }
-  return mimeTypes[extension || ''] || 'audio/mpeg'
 }

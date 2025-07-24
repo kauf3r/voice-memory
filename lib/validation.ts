@@ -1,78 +1,69 @@
 import { z } from 'zod'
 
-// Zod schema for validating GPT-4 analysis results - More flexible validation
+// Zod schema for validating GPT-4 analysis results - Match the flat structure from analysis.ts
 export const AnalysisSchema = z.object({
   sentiment: z.object({
     classification: z.enum(['Positive', 'Neutral', 'Negative']),
-    explanation: z.string().min(1).optional(),
-  }).optional(),
+    explanation: z.string(),
+  }),
   focusTopics: z.object({
-    primary: z.string().min(1),
-    minor: z.array(z.string().min(1)).min(0).max(5).default([]), // Allow 0-5 minor topics
-  }).optional(),
+    primary: z.string(),
+    minor: z.array(z.string()).min(2).max(2),
+  }),
   tasks: z.object({
-    myTasks: z.array(z.string().min(1)).default([]),
+    myTasks: z.array(z.string()).default([]),
     delegatedTasks: z.array(z.object({
-      task: z.string().min(1),
-      assignedTo: z.string().min(1).optional(),
-      nextSteps: z.string().min(1).optional(),
+      task: z.string(),
+      assignedTo: z.string(),
+      nextSteps: z.string(),
     })).default([]),
-  }).optional(),
-  keyIdeas: z.array(z.string().min(1)).default([]),
+  }),
+  keyIdeas: z.array(z.string()).default([]),
   messagesToDraft: z.array(z.object({
-    recipient: z.string().min(1),
-    subject: z.string().min(1),
-    body: z.string().min(1),
+    recipient: z.string(),
+    subject: z.string(),
+    body: z.string(),
   })).default([]),
   crossReferences: z.object({
-    relatedNotes: z.array(z.string().min(1)).default([]),
-    projectKnowledgeUpdates: z.array(z.string().min(1)).default([]),
-  }).optional(),
+    relatedNotes: z.array(z.string()).default([]),
+    projectKnowledgeUpdates: z.array(z.string()).default([]),
+  }),
   outreachIdeas: z.array(z.object({
-    contact: z.string().min(1),
-    topic: z.string().min(1),
-    purpose: z.string().min(1),
+    contact: z.string(),
+    topic: z.string(),
+    purpose: z.string(),
   })).default([]),
   structuredData: z.object({
     dates: z.array(z.object({
-      date: z.string().min(1),
-      context: z.string().min(1),
+      date: z.string(),
+      context: z.string(),
       type: z.enum(['past', 'future', 'deadline', 'meeting', 'event']),
     })).default([]),
     times: z.array(z.object({
-      time: z.string().min(1),
-      context: z.string().min(1),
+      time: z.string(),
+      context: z.string(),
       type: z.enum(['arrival', 'departure', 'meeting', 'deadline', 'general']),
     })).default([]),
     locations: z.array(z.object({
-      place: z.string().min(1),
-      context: z.string().min(1),
+      place: z.string(),
+      context: z.string(),
       type: z.enum(['destination', 'origin', 'meeting_place', 'reference']),
     })).default([]),
     numbers: z.array(z.object({
-      value: z.string().min(1),
-      context: z.string().min(1),
+      value: z.string(),
+      context: z.string(),
       type: z.enum(['quantity', 'measurement', 'price', 'duration', 'identifier']),
     })).default([]),
     people: z.array(z.object({
-      name: z.string().min(1),
-      context: z.string().min(1),
+      name: z.string(),
+      context: z.string(),
       relationship: z.string().optional(),
     })).default([]),
-  }).default({
-    dates: [],
-    times: [],
-    locations: [],
-    numbers: [],
-    people: []
   }),
   recordingContext: z.object({
-    recordedAt: z.string().min(1),
+    recordedAt: z.string(),
     extractedDate: z.string().optional(),
     timeReferences: z.array(z.string()).default([]),
-  }).default({
-    recordedAt: new Date().toISOString(),
-    timeReferences: []
   }),
 })
 
@@ -116,14 +107,14 @@ export function validateAnalysis(rawAnalysis: unknown): {
   }
 }
 
-// Create a partial analysis with fallback values
+// Create a partial analysis with fallback values - now matching flat structure
 function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
   const raw = rawAnalysis as any
   
   return {
     sentiment: {
       classification: ['Positive', 'Neutral', 'Negative'].includes(raw?.sentiment?.classification) 
-        ? raw.sentiment.classification 
+        ? raw.sentiment.classification as 'Positive' | 'Neutral' | 'Negative'
         : 'Neutral',
       explanation: typeof raw?.sentiment?.explanation === 'string' 
         ? raw.sentiment.explanation 
@@ -134,7 +125,7 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
         ? raw.focusTopics.primary 
         : 'General',
       minor: Array.isArray(raw?.focusTopics?.minor) && raw.focusTopics.minor.length >= 2
-        ? raw.focusTopics.minor.slice(0, 2)
+        ? [raw.focusTopics.minor[0], raw.focusTopics.minor[1]]
         : ['Topic1', 'Topic2'],
     },
     tasks: {
