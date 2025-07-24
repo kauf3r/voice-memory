@@ -30,7 +30,42 @@ Context from Project Knowledge:
 Voice Note Transcription:
 {transcription}
 
-Return ONLY a valid JSON object matching the NoteAnalysis interface. Include empty arrays for categories with no data.
+Return ONLY a valid JSON object with this EXACT structure:
+{
+  "sentiment": {
+    "classification": "Positive|Neutral|Negative",
+    "explanation": "Brief explanation"
+  },
+  "focusTopics": {
+    "primary": "Main theme",
+    "minor": ["theme1", "theme2"]
+  },
+  "tasks": {
+    "myTasks": ["task1", "task2"],
+    "delegatedTasks": [{"task": "description", "assignedTo": "person", "nextSteps": "what's next"}]
+  },
+  "keyIdeas": ["idea1", "idea2"],
+  "messagesToDraft": [{"recipient": "name", "subject": "subject", "body": "message content"}],
+  "crossReferences": {
+    "relatedNotes": [],
+    "projectKnowledgeUpdates": ["update1"]
+  },
+  "outreachIdeas": [{"contact": "name", "topic": "topic", "purpose": "reason"}],
+  "structuredData": {
+    "dates": [{"date": "tomorrow", "context": "meeting with John", "type": "meeting"}],
+    "times": [{"time": "3:30 PM", "context": "arrived at the airstrip", "type": "arrival"}],
+    "locations": [{"place": "airstrip", "context": "arrival location", "type": "destination"}],
+    "numbers": [{"value": "50", "context": "price mentioned", "type": "price"}],
+    "people": [{"name": "John", "context": "meeting tomorrow", "relationship": "colleague"}]
+  },
+  "recordingContext": {
+    "recordedAt": "{recordingDate}",
+    "extractedDate": "2025-07-21",
+    "timeReferences": ["tomorrow", "next week"]
+  }
+}
+
+Include empty arrays for categories with no data. Use this EXACT field structure.
 
 Example structured data extraction:
 - "I arrived at the airstrip at 3:30 PM" → times: [{"time": "3:30 PM", "context": "arrived at the airstrip", "type": "arrival"}], locations: [{"place": "airstrip", "context": "arrival location", "type": "destination"}]

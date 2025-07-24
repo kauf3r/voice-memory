@@ -22,7 +22,9 @@
     "fix-stuck-notes": "tsx scripts/fix-stuck-notes.ts",
     "check-db-schema": "tsx scripts/check-db-schema.ts",
     "trigger-processing": "tsx scripts/trigger-processing.ts",
-    "process-directly": "tsx scripts/direct-processing.ts"
+    "process-directly": "tsx scripts/direct-processing.ts",
+    "test:production-files": "tsx scripts/test-server-file-production.ts",
+    "test:server-files": "tsx scripts/test-server-file-standalone.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -43,6 +45,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
     "@types/jest": "^29.5.0",
     "dotenv": "^16.3.1",
     "eslint": "^8",

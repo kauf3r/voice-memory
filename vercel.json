@@ -6,13 +6,22 @@
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 300
+    },
+    "app/api/process/**/*.ts": {
+      "maxDuration": 600
+    },
+    "app/api/cron/**/*.ts": {
+      "maxDuration": 300
     }
   },
   "regions": ["iad1"],
   "crons": [
     {
-      "path": "/api/process/batch",
-      "schedule": "0 2 * * *"
+      "path": "/api/cron/process-batch",
+      "schedule": "*/5 * * * *",
+      "headers": {
+        "Authorization": "Bearer ${CRON_SECRET}"
+      }
     }
   ],
   "headers": [
