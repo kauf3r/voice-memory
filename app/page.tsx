@@ -7,7 +7,7 @@ import LoginForm from './components/LoginForm'
 import AutoAuth from './components/AutoAuth'
 import UploadButton from './components/UploadButton'
 import NoteCard from './components/NoteCard'
-import ProcessingStatus from './components/ProcessingStatus'
+import { ProcessingStatus } from './components/ProcessingStatus'
 import SearchBar from './components/SearchBar'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
@@ -97,7 +97,7 @@ export default function Home() {
         </div>
 
         {/* Processing Status */}
-        <ProcessingStatus onStatsUpdate={() => refresh()} />
+        <ProcessingStatus onRefresh={() => refresh()} />
 
         {/* Stats Grid */}
         <GridContainer>
