@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase'
-import { ProcessingStats } from '@/lib/types'
+import { createClient } from '@supabase/supabase-js'
+import { ProcessingStats, Note } from '@/lib/types'
 
 interface ProcessingStatusProps {
   userId?: string
@@ -27,7 +27,11 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
       setIsLoading(true)
       setError(null)
 
-      const supabase = createClient()
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      
       const { data, error: fetchError } = await supabase
         .from('notes')
         .select('processed_at, processing_started_at, error_message, created_at')
@@ -49,7 +53,7 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
       let failed = 0
 
       // Calculate stats with proper lock awareness
-      data.forEach(note => {
+      data.forEach((note: Pick<Note, 'processed_at' | 'processing_started_at' | 'error_message'>) => {
         if (note.processed_at) {
           // Has processed_at timestamp = completed
           completed++

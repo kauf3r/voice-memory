@@ -16,8 +16,9 @@ DECLARE
     lock_acquired BOOLEAN := FALSE;
     current_time TIMESTAMP WITH TIME ZONE := NOW();
     timeout_threshold TIMESTAMP WITH TIME ZONE := current_time - (p_lock_timeout_minutes || ' minutes')::INTERVAL;
+    affected_rows INTEGER;
 BEGIN
-    -- Try to acquire lock using SELECT FOR UPDATE with timeout check
+    -- Try to acquire lock using UPDATE with timeout check
     UPDATE notes 
     SET 
         processing_started_at = current_time,
@@ -32,7 +33,8 @@ BEGIN
         );
     
     -- Check if we successfully acquired the lock
-    GET DIAGNOSTICS lock_acquired = FOUND;
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    lock_acquired := affected_rows > 0;
     
     RETURN lock_acquired;
 END;
