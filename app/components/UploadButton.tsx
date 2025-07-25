@@ -15,16 +15,21 @@ interface UploadButtonProps {
 }
 
 const ACCEPTED_AUDIO_TYPES = [
+  // Audio formats
   'audio/mpeg',
   'audio/mp3',
   'audio/wav',
-  'audio/m4a',
-  'audio/mp4',      // For .m4a files
-  'audio/x-m4a',    // Alternative .m4a MIME type
+  'audio/m4a',      // M4A audio container
+  'audio/mp4',      // M4A files reported as audio/mp4
+  'audio/x-m4a',    // Alternative M4A MIME type
   'audio/aac',
   'audio/ogg',
   'audio/webm',
-  'video/mp4',      // For .mp4 audio files
+  // Video formats (audio will be extracted)
+  'video/mp4',      // MP4 video files
+  'video/quicktime', // .mov files
+  'video/x-msvideo', // .avi files
+  'video/webm',     // WebM video files
 ]
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
@@ -43,9 +48,17 @@ export default function UploadButton({
   const { user } = useAuth()
 
   const validateFile = useCallback((file: File): string | null => {
-    if (!ACCEPTED_AUDIO_TYPES.includes(file.type)) {
-      return `File type "${file.type}" is not supported. Please upload an audio file.`
+    // Enhanced validation with M4A special handling
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    
+    // Special handling for M4A files that might have unexpected MIME types
+    if (fileExtension === 'm4a') {
+      // Accept M4A files regardless of MIME type reported by browser
+      console.log(`M4A file detected: ${file.name}, MIME type: ${file.type}`)
+    } else if (!ACCEPTED_AUDIO_TYPES.includes(file.type)) {
+      return `File type "${file.type}" is not supported. Please upload an audio file (MP3, M4A, WAV, AAC, OGG) or video file (MP4, MOV, AVI, WebM).`
     }
+    
     if (file.size > MAX_FILE_SIZE) {
       return `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds the 25MB limit.`
     }

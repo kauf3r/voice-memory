@@ -94,24 +94,38 @@ export function getFilePathFromUrl(url: string): string {
 
 /**
  * Determine MIME type from file extension and optionally magic bytes
+ * Standardizes M4A/MP4 audio container detection for consistent processing
  */
 export function getMimeTypeFromUrl(url: string, magicBytes?: Uint8Array): string {
   const extension = url.split('.').pop()?.toLowerCase()
   const mimeTypes: Record<string, string> = {
     'mp3': 'audio/mpeg',
-    'm4a': 'audio/mp4',
+    'm4a': 'audio/mp4',  // Standardize M4A as audio/mp4 for Whisper compatibility
     'wav': 'audio/wav',
     'aac': 'audio/aac',
     'ogg': 'audio/ogg',
     'webm': 'audio/webm',
-    'mp4': 'audio/mp4'
+    'mp4': 'audio/mp4'   // Could be audio or video - magic bytes will determine
   }
 
   // If we have magic bytes, use them for more accurate detection
-  if (magicBytes && magicBytes.length >= 8) {
-    // Check for M4A/MP4 format (starts with ftyp box)
+  if (magicBytes && magicBytes.length >= 12) {
+    // Check for MP4/M4A container (starts with ftyp box)
     if (magicBytes[4] === 0x66 && magicBytes[5] === 0x74 && magicBytes[6] === 0x79 && magicBytes[7] === 0x70) {
-      return 'audio/mp4'
+      // Check ftyp brand to distinguish audio vs video MP4 containers
+      const brandBytes = magicBytes.slice(8, 12)
+      const brand = String.fromCharCode(...brandBytes)
+      
+      // M4A audio container brands
+      if (brand === 'M4A ' || brand === 'M4B ' || brand === 'mp41' || brand === 'mp42') {
+        return 'audio/mp4'  // Confirmed M4A audio container
+      }
+      // Video MP4 brands
+      else if (brand === 'isom' || brand === 'avc1' || brand === 'mp41' || brand === 'MSNV') {
+        return extension === 'm4a' ? 'audio/mp4' : 'video/mp4'  // Respect original extension intent
+      }
+      // Default to audio/mp4 for M4A files, video/mp4 for MP4 files
+      return extension === 'm4a' ? 'audio/mp4' : (extension === 'mp4' ? 'video/mp4' : 'audio/mp4')
     }
     // Check for MP3 format (ID3 tag or MPEG frame sync)
     else if ((magicBytes[0] === 0x49 && magicBytes[1] === 0x44 && magicBytes[2] === 0x33) || // ID3v2

@@ -77,27 +77,51 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file type
-    console.log('File type:', file.type, 'File size:', file.size)
+    // Validate file type - Enhanced M4A/MP4 support
+    console.log('File type:', file.type, 'File size:', file.size, 'File name:', file.name)
     const allowedTypes = [
+      // Audio formats
       'audio/mpeg',
       'audio/mp3', 
       'audio/wav',
-      'audio/m4a',
-      'audio/mp4',      // For .m4a files
-      'audio/x-m4a',    // Alternative .m4a MIME type
+      'audio/m4a',      // M4A audio container
+      'audio/mp4',      // M4A files reported as audio/mp4
+      'audio/x-m4a',    // Alternative M4A MIME type
       'audio/aac',
       'audio/ogg',
       'audio/webm',
-      'video/mp4',      // For .mp4 audio files
+      // Video formats (will extract audio during processing)
+      'video/mp4',      // MP4 video files
+      'video/quicktime', // .mov files
+      'video/x-msvideo', // .avi files
+      'video/webm',     // WebM video files
     ]
     
+    // Enhanced file type validation with better error reporting
     if (!allowedTypes.includes(file.type)) {
-      console.log('File type validation failed')
-      return NextResponse.json(
-        { error: `File type ${file.type} not supported` },
-        { status: 400 }
-      )
+      console.log('File type validation failed:', {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        allowedTypes: allowedTypes
+      })
+      
+      // Special handling for common M4A MIME type variations
+      const fileExtension = file.name.split('.').pop()?.toLowerCase()
+      if (fileExtension === 'm4a' && !['audio/m4a', 'audio/mp4', 'audio/x-m4a'].includes(file.type)) {
+        console.log('M4A file with unexpected MIME type:', file.type, '- attempting to process anyway')
+        // Allow M4A files even with unexpected MIME types
+      } else {
+        return NextResponse.json(
+          { 
+            error: `File type ${file.type} not supported`,
+            details: `File extension: .${fileExtension}. Supported formats: audio files (MP3, M4A, WAV, AAC, OGG) and video files (MP4, MOV, AVI, WebM)`,
+            fileType: file.type,
+            fileName: file.name
+          },
+          { status: 400 }
+        )
+      }
     }
     
     console.log('File type validation passed')

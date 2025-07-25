@@ -5,18 +5,14 @@
   "outputDirectory": ".next",
   "functions": {
     "app/api/process/**/*.ts": {
-      "maxDuration": 600
+      "maxDuration": 300
     }
   },
   "regions": ["iad1"],
   "crons": [
     {
       "path": "/api/process/batch",
-      "schedule": "*/5 * * * *",
-      "method": "POST",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 0 * * *"
     }
   ],
   "headers": [
