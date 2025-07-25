@@ -84,17 +84,20 @@ export default function UploadButton({
     const fileId = `${file.name}-${Date.now()}`
     setUploadProgress(prev => ({ ...prev, [fileId]: 0 }))
 
+    // Initialize progress interval outside try block so it's accessible in catch
+    let progressInterval: NodeJS.Timeout | null = null
+
     try {
       // Create FormData for the upload
       const formData = new FormData()
       formData.append('file', file)
 
       // Simulate progress updates
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           const currentProgress = prev[fileId] || 0
           if (currentProgress >= 95) {
-            clearInterval(progressInterval)
+            if (progressInterval) clearInterval(progressInterval)
             return prev
           }
           return { ...prev, [fileId]: currentProgress + 10 }
@@ -141,7 +144,7 @@ export default function UploadButton({
       clearTimeout(timeoutId)
       console.log('Upload response received:', response.status, response.statusText)
 
-      clearInterval(progressInterval)
+      if (progressInterval) clearInterval(progressInterval)
       setUploadProgress(prev => ({ ...prev, [fileId]: 100 }))
 
       if (!response.ok) {
@@ -200,7 +203,7 @@ export default function UploadButton({
       }
     } catch (error) {
       console.error('Upload error caught:', error)
-      clearInterval(progressInterval)
+      if (progressInterval) clearInterval(progressInterval)
       setUploadProgress(prev => {
         const newProgress = { ...prev }
         delete newProgress[fileId]
