@@ -9,7 +9,7 @@ export interface Config {
   isProduction: boolean;
 }
 
-function getBaseUrl(): string {
+function determineBaseUrl(): string {
   // In browser environment
   if (typeof window !== 'undefined') {
     return window.location.origin;
@@ -35,7 +35,7 @@ function getBaseUrl(): string {
 }
 
 function createConfig(): Config {
-  const baseUrl = getBaseUrl();
+  const baseUrl = determineBaseUrl();
   const isDevelopment = process.env.NODE_ENV === 'development';
   const isProduction = process.env.NODE_ENV === 'production';
 
