@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from './components/AuthProvider'
 import ErrorBoundary from './components/ErrorBoundary'
+import { ProcessingStatsProvider } from '@/lib/contexts/ProcessingStatsContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -59,7 +60,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ErrorBoundary>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ProcessingStatsProvider>
+              {children}
+            </ProcessingStatsProvider>
+          </AuthProvider>
         </ErrorBoundary>
       </body>
     </html>
