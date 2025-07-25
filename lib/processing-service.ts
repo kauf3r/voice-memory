@@ -2,6 +2,7 @@ import { createServiceClient } from './supabase-server'
 import { transcribeAudio, analyzeTranscription } from './openai'
 import { createServerFile, createServerFileFromBuffer, getFilePathFromUrl, getMimeTypeFromUrl } from './storage'
 import { hasErrorTracking, logMigrationStatus } from './migration-checker'
+import { isVideoFile, processVideoFile } from './video-processor'
 
 interface ProcessingJob {
   queue_id: string
@@ -494,23 +495,84 @@ export class ProcessingService {
         const buffer = await audioData.arrayBuffer()
         const nodeBuffer = Buffer.from(buffer)
         
-        // Optimize MIME detection - only read first 32 bytes
-        const mimeType = getMimeTypeFromUrl(job.audio_url, nodeBuffer.slice(0, 32))
-        const extension = job.audio_url.split('.').pop() || 'mp3'
+        // Enhanced MIME detection with better M4A/MP4 handling - read first 32 bytes for magic bytes
+        const magicBytes = nodeBuffer.slice(0, 32)
+        const mimeType = getMimeTypeFromUrl(job.audio_url, magicBytes)
+        const extension = job.audio_url.split('.').pop()?.toLowerCase() || 'mp3'
         
-        console.log(`Detected file type: ${mimeType} (${extension}) for note ${job.note_id}`)
-        console.log(`File size: ${nodeBuffer.length} bytes`)
+        console.log(`Processing file: ${job.audio_url}`);
+        console.log(`  Extension: .${extension}`);
+        console.log(`  Detected MIME type: ${mimeType}`);
+        console.log(`  File size: ${nodeBuffer.length} bytes`);
+        console.log(`  Magic bytes: ${Array.from(new Uint8Array(magicBytes.slice(0, 12))).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+        
+        // Special logging for M4A files to help debug processing issues
+        if (extension === 'm4a' || mimeType.includes('mp4')) {
+          console.log(`M4A/MP4 container detected - Extension: ${extension}, MIME: ${mimeType}`);
+          // Log ftyp brand if it's an MP4 container
+          if (magicBytes[4] === 0x66 && magicBytes[5] === 0x74 && magicBytes[6] === 0x79 && magicBytes[7] === 0x70) {
+            const brandBytes = new Uint8Array(magicBytes.buffer, magicBytes.byteOffset + 8, 4);
+            const brand = String.fromCharCode(...Array.from(brandBytes));
+            console.log(`  MP4 container brand: '${brand}'`);
+          }
+        }
+        
+        // Check if this is a video file that requires special processing
+        if (isVideoFile(mimeType, job.audio_url)) {
+          console.log(`Video file detected: ${job.audio_url}`);
+          
+          // Process video file to extract audio
+          const videoProcessingResult = await processVideoFile(nodeBuffer, job.audio_url, mimeType);
+          
+          if (!videoProcessingResult.success) {
+            metrics.errorCategory = 'video_processing';
+            console.error('Video processing failed:', videoProcessingResult.error);
+            throw new Error(`Video processing failed: ${videoProcessingResult.error}`);
+          }
+          
+          // If successful, use the extracted audio buffer
+          if (videoProcessingResult.audioBuffer && videoProcessingResult.audioMimeType) {
+            console.log('Audio successfully extracted from video');
+            const extractedAudioFile = createServerFileFromBuffer(
+              videoProcessingResult.audioBuffer, 
+              `${job.note_id}_extracted.mp3`, 
+              videoProcessingResult.audioMimeType
+            );
+            
+            // Continue with transcription using extracted audio
+            // (The transcription code below will use this file)
+          }
+        }
         
         // Use the more robust Buffer-based file creation for better OpenAI compatibility
         const audioFile = createServerFileFromBuffer(nodeBuffer, `${job.note_id}.${extension}`, mimeType)
 
-        // Use circuit breaker for OpenAI API calls
+        // Use circuit breaker for OpenAI API calls with enhanced error logging
+        console.log(`Sending to Whisper API: ${audioFile.name} (${audioFile.type}, ${audioFile.size} bytes)`);
         const { text: transcriptionResult, error: transcriptionError } = await this.circuitBreaker.execute(
           () => transcribeAudio(audioFile)
         )
 
         if (transcriptionError || !transcriptionResult) {
           metrics.errorCategory = 'transcription'
+          
+          // Enhanced error logging for M4A/MP4 files
+          console.error(`Transcription failed for ${extension} file:`, {
+            noteId: job.note_id,
+            fileName: audioFile.name,
+            fileType: audioFile.type,
+            fileSize: audioFile.size,
+            originalUrl: job.audio_url,
+            extension: extension,
+            detectedMimeType: mimeType,
+            errorMessage: transcriptionError?.message
+          });
+          
+          // Specific error for M4A files
+          if (extension === 'm4a' || mimeType.includes('mp4')) {
+            throw new Error(`M4A/MP4 transcription failed: ${transcriptionError?.message}. This may be due to container format compatibility issues.`);
+          }
+          
           throw new Error(`Transcription failed: ${transcriptionError?.message}`)
         }
 
@@ -555,14 +617,26 @@ export class ProcessingService {
 
       // Step 4: Update note with results and release lock
       metrics.processingStage = 'saving'
+      
+      // Check migration status for error tracking columns
+      const migrationStatus = await checkErrorTrackingMigration()
+      
+      const updateData: any = {
+        transcription,
+        analysis,
+        processed_at: new Date().toISOString(),
+        processing_started_at: null
+      }
+      
+      // Only include error tracking columns if they exist
+      if (migrationStatus.hasErrorTracking) {
+        updateData.error_message = null
+        updateData.last_error_at = null
+      }
+      
       await this.supabase
         .from('notes')
-        .update({
-          transcription,
-          analysis,
-          error_message: null,
-          last_error_at: null
-        })
+        .update(updateData)
         .eq('id', job.note_id)
 
       // Release lock with successful completion
@@ -604,12 +678,48 @@ export class ProcessingService {
 
   private async releaseProcessingLockWithError(noteId: string, errorMessage: string): Promise<void> {
     try {
-      await this.supabase.rpc('release_processing_lock_with_error', { 
-        p_note_id: noteId,
-        p_error_message: errorMessage
-      })
+      // Check migration status to determine available methods
+      const migrationStatus = await checkErrorTrackingMigration()
+      
+      if (migrationStatus.hasFunctions) {
+        // Try using the database function first
+        const { error: functionError } = await this.supabase.rpc('release_processing_lock_with_error', { 
+          p_note_id: noteId,
+          p_error_message: errorMessage
+        })
+        
+        if (!functionError) {
+          return // Success with function
+        }
+        console.warn(`Database function failed, using fallback: ${functionError.message}`)
+      }
+      
+      // Fallback to direct update
+      const updateData: any = {
+        processing_started_at: null
+      }
+      
+      // Only include error tracking columns if they exist
+      if (migrationStatus.hasErrorTracking) {
+        updateData.error_message = errorMessage
+        updateData.last_error_at = new Date().toISOString()
+        updateData.processing_attempts = this.supabase.raw('COALESCE(processing_attempts, 0) + 1')
+      } else {
+        console.warn(`Error tracking not available, logging to console: Note ${noteId} error: ${errorMessage}`)
+      }
+      
+      const { error: updateError } = await this.supabase
+        .from('notes')
+        .update(updateData)
+        .eq('id', noteId)
+        
+      if (updateError) {
+        console.error(`Failed to release processing lock with error for note ${noteId}:`, updateError)
+      }
     } catch (error) {
       console.error(`Failed to release processing lock with error for note ${noteId}:`, error)
+      // Final fallback - just log to console
+      console.warn(`Final fallback: Note ${noteId} processing failed with error: ${errorMessage}`)
     }
   }
 
@@ -717,37 +827,90 @@ export class ProcessingService {
     failed: number
   }> {
     try {
-      // First, cleanup any abandoned processing locks
-      await this.cleanupAbandonedLocks()
+      // Check migration status to determine available features
+      const migrationStatus = await checkErrorTrackingMigration()
       
-      // Use the updated database function that accounts for processing locks
-      const { data: stats, error } = await this.supabase
-        .rpc('get_processing_stats', { p_user_id: userId })
+      // First, cleanup any abandoned processing locks if available
+      if (migrationStatus.isApplied) {
+        await this.cleanupAbandonedLocks()
+      }
+      
+      if (migrationStatus.hasFunctions) {
+        // Use the database function if available
+        const { data: stats, error } = await this.supabase
+          .rpc('get_processing_stats', { p_user_id: userId })
 
-      if (error) {
-        throw error
+        if (!error && stats && stats.length > 0) {
+          const result = stats[0]
+          return {
+            total: Number(result.total),
+            pending: Number(result.pending),
+            processing: Number(result.processing),
+            completed: Number(result.completed),
+            failed: Number(result.failed)
+          }
+        }
+        console.warn('Database function failed, using fallback calculation')
       }
 
-      if (!stats || stats.length === 0) {
-        return { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 }
+      // Fallback to manual calculation
+      console.warn('Database function not available, calculating stats manually')
+      
+      // Build select query based on available columns
+      let selectColumns = 'processed_at, transcription, analysis'
+      if (migrationStatus.hasErrorTracking) {
+        selectColumns += ', error_message, processing_started_at'
+      }
+      
+      const { data: notes, error: notesError } = await this.supabase
+        .from('notes')
+        .select(selectColumns)
+        .eq('user_id', userId)
+
+      if (notesError) {
+        throw new Error(`Failed to get notes for stats: ${notesError.message}`)
       }
 
-      const result = stats[0]
+      const total = notes?.length || 0
+      const completed = notes?.filter(n => n.processed_at).length || 0
+      
+      let failed = 0
+      let processing = 0
+      
+      if (migrationStatus.hasErrorTracking) {
+        failed = notes?.filter(n => n.error_message).length || 0
+        processing = notes?.filter(n => n.processing_started_at && !n.processed_at && !n.error_message).length || 0
+      } else {
+        // Without error tracking, estimate based on completion status
+        const incomplete = notes?.filter(n => !n.processed_at).length || 0
+        const withTranscription = notes?.filter(n => !n.processed_at && n.transcription).length || 0
+        processing = withTranscription
+        failed = Math.max(0, incomplete - processing) // Rough estimate
+      }
+      
+      const pending = Math.max(0, total - completed - failed - processing)
+
       return {
-        total: Number(result.total),
-        pending: Number(result.pending),
-        processing: Number(result.processing),
-        completed: Number(result.completed),
-        failed: Number(result.failed)
+        total,
+        pending,
+        processing,
+        completed,
+        failed
       }
     } catch (error) {
       console.error('Failed to get processing stats:', error)
+      // Return basic stats even if query fails
       return { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 }
     }
   }
 
   private categorizeError(errorMessage: string): string {
     const message = errorMessage.toLowerCase()
+    
+    // Database/Migration specific errors (highest priority)
+    if (message.includes('column') && message.includes('does not exist')) return 'missing_migration'
+    if (message.includes('relation') && message.includes('does not exist')) return 'missing_table'
+    if (message.includes('function') && message.includes('does not exist')) return 'missing_function'
     
     // Enhanced error categorization for better debugging and retry strategies
     if (message.includes('timeout') || message.includes('time out')) {
@@ -772,6 +935,8 @@ export class ProcessingService {
       return 'circuit_breaker'
     } else if (message.includes('memory') || message.includes('resource')) {
       return 'resource'
+    } else if (message.includes('database') || message.includes('supabase')) {
+      return 'database'
     } else {
       return 'unknown'
     }

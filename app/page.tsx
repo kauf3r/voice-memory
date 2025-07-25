@@ -12,6 +12,8 @@ import SearchBar from './components/SearchBar'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
 import { useState } from 'react'
+import Link from 'next/link'
+import { isAdminUser } from '@/lib/auth-utils'
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth()
@@ -66,9 +68,22 @@ export default function Home() {
         )}
 
         {/* Header Section */}
-        <div className="text-center">
+        <div className="text-center relative">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Voice Memory</h1>
           <p className="text-lg text-gray-600">Transform your voice notes into actionable insights</p>
+          
+          {/* Admin Dashboard Link */}
+          {isAdminUser(user) && (
+            <div className="absolute top-0 right-0">
+              <Link
+                href="/admin-dashboard"
+                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                title="Admin Dashboard"
+              >
+                ⚙️ Admin
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Upload Section */}
