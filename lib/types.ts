@@ -46,8 +46,37 @@ export interface ProcessingStats {
   processing: number
   completed: number
   failed: number
-  error_rate?: number
-  avg_processing_time?: number
+  errorRate?: number
+  global_metrics?: SummaryMetrics
+}
+
+export interface CircuitBreakerStatus {
+  isOpen: boolean
+  failures: number
+  errorTypes: Record<string, number>
+  lastFailureTime: number
+}
+
+export interface SummaryMetrics {
+  totalProcessed: number
+  totalSuccessful: number
+  totalFailed: number
+  successRate: number
+  averageProcessingTime: number
+  currentlyProcessing: number
+  errorCategoryBreakdown: Record<string, number>
+  circuitBreakerStatus: CircuitBreakerStatus
+  uptime: number
+  lastResetTime: number
+  cached: boolean
+  timestamp: string
+}
+
+export interface RetryRequest {
+  action: 'retryStuck' | 'forceReprocess'
+  noteIds?: string[]
+  forceReset?: boolean
+  batchSize?: number
 }
 
 export interface NoteAnalysis {

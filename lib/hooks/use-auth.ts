@@ -40,10 +40,16 @@ export function useAuth() {
     return { error }
   }
 
+  const getAccessToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token || null
+  }
+
   return {
     user,
     loading,
     signInWithEmail,
     signOut,
+    getAccessToken,
   }
 }

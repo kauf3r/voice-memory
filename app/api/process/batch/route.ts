@@ -162,6 +162,47 @@ export async function POST(request: NextRequest) {
       body = {}
     }
     
+    // Handle retry operations
+    if (body.action === 'retryStuck') {
+      console.log(`Processing retry stuck request (batch: ${batchId})`)
+      
+      try {
+        // Reset stuck processing locks
+        const resetResult = await processingService.resetStuckProcessing(body.forceReset || false)
+        console.log(`Reset ${resetResult.reset} stuck notes (batch: ${batchId})`)
+        
+        // Process the batch after resetting
+        const result = await processingService.processNextBatch(body.batchSize || 5)
+        
+        const endTime = Date.now()
+        const totalTimeMs = endTime - startTime
+        
+        return NextResponse.json({
+          success: true,
+          timestamp: new Date().toISOString(),
+          batchId,
+          action: 'retryStuck',
+          reset: resetResult.reset,
+          processed: result.processed,
+          failed: result.failed,
+          errors: result.errors,
+          totalTimeMs,
+          message: `Retry completed: reset ${resetResult.reset} stuck notes, processed ${result.processed}, ${result.failed} failed`
+        })
+      } catch (error) {
+        console.error(`Retry stuck operation failed (batch: ${batchId}):`, error)
+        
+        return NextResponse.json({
+          success: false,
+          error: 'Retry stuck operation failed',
+          errorDetails: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+          batchId,
+          action: 'retryStuck'
+        }, { status: 500 })
+      }
+    }
+    
     // Get batch size from request body or use default (with enhanced validation)
     const requestedBatchSize = authMethod === 'cron' 
       ? Math.min(Math.max(body.batchSize || BATCH_SIZE, 1), 20)

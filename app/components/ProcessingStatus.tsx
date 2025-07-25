@@ -1,8 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { ProcessingStats, Note } from '@/lib/types'
+import { useProcessingStats } from '@/lib/hooks/use-processing-stats'
 
 interface ProcessingStatusProps {
   userId?: string
@@ -10,95 +8,17 @@ interface ProcessingStatusProps {
 }
 
 export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
-  const [stats, setStats] = useState<ProcessingStats>({
-    total: 0,
-    pending: 0,
-    processing: 0,
-    completed: 0,
-    failed: 0
+  const { data: stats, loading: isLoading, error, refresh } = useProcessingStats({
+    scope: 'user',
+    refreshInterval: 30000,
+    enabled: true
   })
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchStats = async () => {
-    if (!userId) return
-
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      
-      const { data, error: fetchError } = await supabase
-        .from('notes')
-        .select('processed_at, processing_started_at, error_message, created_at')
-        .eq('user_id', userId)
-
-      if (fetchError) {
-        throw fetchError
-      }
-
-      if (!data) {
-        setStats({ total: 0, pending: 0, processing: 0, completed: 0, failed: 0 })
-        return
-      }
-
-      const total = data.length
-      let pending = 0
-      let processing = 0
-      let completed = 0
-      let failed = 0
-
-      // Calculate stats with proper lock awareness
-      data.forEach((note: Pick<Note, 'processed_at' | 'processing_started_at' | 'error_message'>) => {
-        if (note.processed_at) {
-          // Has processed_at timestamp = completed
-          completed++
-        } else if (note.error_message) {
-          // Has error message = failed
-          failed++
-        } else if (note.processing_started_at) {
-          // Has processing lock = actively processing
-          processing++
-        } else {
-          // No lock, no error, not processed = pending
-          pending++
-        }
-      })
-
-      setStats({
-        total,
-        pending,
-        processing,
-        completed,
-        failed
-      })
-    } catch (err) {
-      console.error('Failed to fetch processing stats:', err)
-      setError(err instanceof Error ? err.message : 'Failed to fetch stats')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchStats()
-  }, [userId])
-
-  useEffect(() => {
-    if (onRefresh) {
-      fetchStats()
-    }
-  }, [onRefresh])
 
   const handleManualRefresh = () => {
-    fetchStats()
+    refresh()
   }
 
-  if (isLoading) {
+  if (isLoading || !stats) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Processing Status</h3>
@@ -205,6 +125,11 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
             <div className="flex items-center">
               <span className="mr-2">{getStatusIcon('failed')}</span>
               <span className="font-medium">Failed</span>
+              {stats.error_rate && (
+                <span className="ml-1 text-xs opacity-75">
+                  ({stats.error_rate.toFixed(1)}% error rate)
+                </span>
+              )}
             </div>
             <span className="font-semibold">{stats.failed}</span>
           </div>
