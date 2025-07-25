@@ -4,21 +4,16 @@
   "installCommand": "npm install",
   "outputDirectory": ".next",
   "functions": {
-    "app/api/**/*.ts": {
-      "maxDuration": 300
-    },
     "app/api/process/**/*.ts": {
       "maxDuration": 600
-    },
-    "app/api/cron/**/*.ts": {
-      "maxDuration": 300
     }
   },
   "regions": ["iad1"],
   "crons": [
     {
-      "path": "/api/cron/process-batch",
+      "path": "/api/process/batch",
       "schedule": "*/5 * * * *",
+      "method": "POST",
       "headers": {
         "Authorization": "Bearer ${CRON_SECRET}"
       }

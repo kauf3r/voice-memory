@@ -44,7 +44,7 @@ This guide explains how to seamlessly transfer voice memos from your iPhone to V
 ### Setup Instructions
 
 1. **Get your authentication token**:
-   - Log into Voice Memory at https://voice-memory-tau.vercel.app
+   - Log into Voice Memory at your deployment URL (usually https://voice-memory-tau.vercel.app)
    - Open browser Developer Tools (F12)
    - Go to Application/Storage → Local Storage
    - Find the key containing "auth-token" and copy the value
@@ -60,7 +60,7 @@ This guide explains how to seamlessly transfer voice memos from your iPhone to V
 
 #### Step 2: Set Variables
 - Add action: "Text"
-- Enter: `https://voice-memory-tau.vercel.app/api/upload`
+- Enter: `[YOUR_DEPLOYMENT_URL]/api/upload` (replace with your deployment URL)
 - Add action: "Set Variable" 
 - Variable name: `uploadURL`
 
@@ -98,7 +98,7 @@ This guide explains how to seamlessly transfer voice memos from your iPhone to V
 - Find: `""`
 - Replace: `noteId` (select variable)
 - Add action: "Get Contents of URL"
-- URL: `https://voice-memory-tau.vercel.app/api/process`
+- URL: `[YOUR_DEPLOYMENT_URL]/api/process` (replace with your deployment URL)
 - Method: POST
 - Headers:
   - Key: `Authorization`
@@ -191,12 +191,12 @@ You can also use the API directly in your own scripts:
 
 ```bash
 # Upload a file
-curl -X POST https://voice-memory-tau.vercel.app/api/upload \
+curl -X POST [YOUR_DEPLOYMENT_URL]/api/upload \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "file=@your-audio.mp3"
 
 # Process a note
-curl -X POST https://voice-memory-tau.vercel.app/api/process \
+curl -X POST [YOUR_DEPLOYMENT_URL]/api/process \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"noteId": "NOTE_ID_HERE"}'

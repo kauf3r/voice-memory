@@ -2,12 +2,12 @@
 
 ## Option 1: Get Token from Production Site (Easiest)
 
-1. **Open Voice Memory in your browser**: https://voice-memory-tau.vercel.app
+1. **Open Voice Memory in your browser**: Check your Vercel deployment URL (usually https://voice-memory-tau.vercel.app)
 2. **Make sure you're logged in** (you should see your notes)
 3. **Open Developer Tools**: 
    - Chrome/Edge: Press `F12` or `Cmd+Option+I`
    - Safari: Enable Developer menu first, then `Cmd+Option+I`
-4. **Go to**: Application → Storage → Local Storage → https://voice-memory-tau.vercel.app
+4. **Go to**: Application → Storage → Local Storage → [your deployment URL]
 5. **Find**: Look for a key like `sb-vbjszugsvrqxosbtffqw-auth-token`
 6. **Copy**: Click on it and copy the `access_token` value from the JSON
 

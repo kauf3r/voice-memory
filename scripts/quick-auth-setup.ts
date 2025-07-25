@@ -10,6 +10,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { createClient } from '@supabase/supabase-js'
 import * as dotenv from 'dotenv'
+import { config } from '../lib/config.js'
 
 // Load environment variables
 dotenv.config({ path: '.env.local' })
@@ -48,7 +49,7 @@ async function main() {
   // Alternative: Direct password login (if you know your password)
   console.log('\n--- OR ---\n')
   console.log('If you know your password, create .voice-memory-auth file manually with your token')
-  console.log('You can get it from the production site at https://voice-memory-tau.vercel.app')
+  console.log(`You can get it from the production site at ${config.baseUrl}`)
 }
 
 main().catch(console.error)

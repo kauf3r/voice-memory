@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 
 # Sitemap
-Sitemap: https://voice-memory.vercel.app/sitemap.xml
+Sitemap: https://voice-memory-tau.vercel.app/sitemap.xml
 
 # Disallow sensitive paths
 Disallow: /api/

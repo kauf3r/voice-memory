@@ -14,13 +14,27 @@ interface UseNotesReturn {
   loadMore: () => Promise<void>
   retryNote: (noteId: string) => Promise<void>
   retryFailedNotes: () => Promise<void>
-  filterByErrorStatus: (hasError: boolean) => void
+  clearAllErrors: () => Promise<void>
+  filterByErrorStatus: (hasError: boolean | null) => void
+  bulkRetryNotes: (noteIds: string[]) => Promise<void>
+  getFilteredStats: () => {
+    total: number
+    withErrors: number
+    processing: number
+    completed: number
+    pending: number
+    failed: number
+  }
+  getErrorBreakdown: () => Record<string, number>
+  bulkClearErrors: (noteIds: string[]) => Promise<void>
+  retryByErrorType: (errorType: string) => Promise<void>
 }
 
 interface FetchNotesOptions {
   limit?: number
   search?: string
   errorStatus?: boolean | null // null = all, true = with errors, false = without errors
+  includeErrorFields?: boolean
 }
 
 export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
@@ -32,7 +46,7 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
   const [offset, setOffset] = useState(0)
   const [errorFilter, setErrorFilter] = useState<boolean | null>(options.errorStatus || null)
 
-  const { limit = 20, search } = options
+  const { limit = 20, search, includeErrorFields = true } = options
 
   const fetchNotes = useCallback(async (resetOffset = true) => {
     try {
@@ -58,6 +72,11 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
       // Add error status filter
       if (errorFilter !== null) {
         params.append('errorStatus', errorFilter.toString())
+      }
+
+      // Always include error fields for enhanced error handling
+      if (includeErrorFields) {
+        params.append('includeErrorFields', 'true')
       }
 
       const response = await fetch(`/api/notes?${params}`, {
@@ -94,7 +113,7 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     } finally {
       setLoading(false)
     }
-  }, [limit, search, offset, errorFilter])
+  }, [limit, search, offset, errorFilter, includeErrorFields])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -130,15 +149,29 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to retry note processing')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to retry note processing')
       }
 
-      // Refresh the notes to get updated status
-      await refresh()
+      // Update the note in the local state to show it's being retried
+      setNotes(prev => prev.map(note => 
+        note.id === noteId 
+          ? { 
+              ...note, 
+              error_message: undefined, 
+              last_error_at: undefined,
+              processing_started_at: new Date().toISOString() 
+            }
+          : note
+      ))
+
+      // Refresh the notes to get updated status after a short delay
+      setTimeout(() => refresh(), 1000)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to retry note'
       setError(errorMessage)
       console.error('retryNote error:', err)
+      throw err // Re-throw for component error handling
     }
   }, [refresh])
 
@@ -151,43 +184,325 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
         throw new Error('Not authenticated - please log in')
       }
 
-      // Get failed notes
-      const { data: failedNotes } = await supabase
-        .from('notes')
-        .select('id')
-        .not('error_message', 'is', null)
+      // Get failed notes from current state
+      const failedNotes = notes.filter(note => note.error_message)
 
-      if (failedNotes && failedNotes.length > 0) {
-        // Retry each failed note
-        for (const note of failedNotes) {
-          await fetch('/api/process', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              noteId: note.id, 
-              forceReprocess: true 
-            }),
-          })
-        }
+      if (failedNotes.length === 0) {
+        return
       }
 
+      console.log(`Retrying ${failedNotes.length} failed notes`)
+
+      // Retry each failed note in parallel (with rate limiting)
+      const retryPromises = failedNotes.map((note, index) => 
+        new Promise<{ noteId: string; success: boolean; error?: string }>((resolve) => {
+          setTimeout(async () => {
+            try {
+              const response = await fetch('/api/process', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                  noteId: note.id, 
+                  forceReprocess: true 
+                }),
+              })
+              
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}))
+                resolve({ noteId: note.id, success: false, error: errorData.error })
+              } else {
+                resolve({ noteId: note.id, success: true })
+              }
+            } catch (err) {
+              resolve({ noteId: note.id, success: false, error: err instanceof Error ? err.message : 'Unknown error' })
+            }
+          }, index * 500) // Stagger requests by 500ms
+        })
+      )
+
+      const results = await Promise.allSettled(retryPromises)
+      const successfulRetries = results
+        .filter((result): result is PromiseFulfilledResult<{ noteId: string; success: boolean }> => 
+          result.status === 'fulfilled' && result.value.success)
+        .map(result => result.value.noteId)
+
+      // Update local state to show notes are being retried
+      setNotes(prev => prev.map(note => 
+        successfulRetries.includes(note.id)
+          ? { 
+              ...note, 
+              error_message: undefined, 
+              last_error_at: undefined,
+              processing_started_at: new Date().toISOString() 
+            }
+          : note
+      ))
+
+      console.log(`Successfully initiated retry for ${successfulRetries.length}/${failedNotes.length} notes`)
+
       // Refresh the notes to get updated status
-      await refresh()
+      setTimeout(() => refresh(), 2000)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to retry failed notes'
       setError(errorMessage)
       console.error('retryFailedNotes error:', err)
     }
+  }, [notes, refresh])
+
+  const clearAllErrors = useCallback(async () => {
+    try {
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.access_token) {
+        throw new Error('Not authenticated - please log in')
+      }
+
+      // Get failed notes from current state
+      const failedNotes = notes.filter(note => note.error_message)
+
+      if (failedNotes.length === 0) {
+        return
+      }
+
+      // Clear errors from all failed notes in the database
+      const { error: updateError } = await supabase
+        .from('notes')
+        .update({ 
+          error_message: null, 
+          last_error_at: null 
+        })
+        .in('id', failedNotes.map(note => note.id))
+
+      if (updateError) {
+        throw new Error(`Failed to clear errors: ${updateError.message}`)
+      }
+
+      // Update local state
+      setNotes(prev => prev.map(note => 
+        failedNotes.some(failed => failed.id === note.id)
+          ? { ...note, error_message: undefined, last_error_at: undefined }
+          : note
+      ))
+
+      console.log(`Cleared errors for ${failedNotes.length} notes`)
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to clear errors'
+      setError(errorMessage)
+      console.error('clearAllErrors error:', err)
+    }
+  }, [notes])
+
+  const bulkRetryNotes = useCallback(async (noteIds: string[]) => {
+    try {
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.access_token) {
+        throw new Error('Not authenticated - please log in')
+      }
+
+      if (noteIds.length === 0) {
+        return
+      }
+
+      console.log(`Bulk retrying ${noteIds.length} notes`)
+
+      // Retry selected notes in parallel (with rate limiting)
+      const retryPromises = noteIds.map((noteId, index) => 
+        new Promise<{ noteId: string; success: boolean }>((resolve) => {
+          setTimeout(async () => {
+            try {
+              const response = await fetch('/api/process', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                  noteId, 
+                  forceReprocess: true 
+                }),
+              })
+              resolve({ noteId, success: response.ok })
+            } catch (err) {
+              resolve({ noteId, success: false })
+            }
+          }, index * 300) // Stagger requests by 300ms
+        })
+      )
+
+      const results = await Promise.allSettled(retryPromises)
+      const successfulRetries = results
+        .filter((result): result is PromiseFulfilledResult<{ noteId: string; success: boolean }> => 
+          result.status === 'fulfilled' && result.value.success)
+        .map(result => result.value.noteId)
+
+      // Update local state to show notes are being retried
+      setNotes(prev => prev.map(note => 
+        successfulRetries.includes(note.id)
+          ? { 
+              ...note, 
+              error_message: undefined, 
+              last_error_at: undefined,
+              processing_started_at: new Date().toISOString() 
+            }
+          : note
+      ))
+
+      console.log(`Successfully initiated retry for ${successfulRetries.length}/${noteIds.length} notes`)
+
+      // Refresh the notes to get updated status
+      setTimeout(() => refresh(), 1500)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to retry selected notes'
+      setError(errorMessage)
+      console.error('bulkRetryNotes error:', err)
+    }
   }, [refresh])
+
+  const bulkClearErrors = useCallback(async (noteIds: string[]) => {
+    try {
+      if (noteIds.length === 0) return
+
+      // Clear errors from specified notes in the database
+      const { error: updateError } = await supabase
+        .from('notes')
+        .update({ 
+          error_message: null, 
+          last_error_at: null 
+        })
+        .in('id', noteIds)
+
+      if (updateError) {
+        throw new Error(`Failed to clear errors: ${updateError.message}`)
+      }
+
+      // Update local state
+      setNotes(prev => prev.map(note => 
+        noteIds.includes(note.id)
+          ? { ...note, error_message: undefined, last_error_at: undefined }
+          : note
+      ))
+
+      console.log(`Cleared errors for ${noteIds.length} notes`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to clear errors'
+      setError(errorMessage)
+      console.error('bulkClearErrors error:', err)
+    }
+  }, [])
+
+  const retryByErrorType = useCallback(async (errorType: string) => {
+    try {
+      // Filter notes by error type (simple keyword matching)
+      const notesToRetry = notes
+        .filter(note => note.error_message && note.error_message.toLowerCase().includes(errorType.toLowerCase()))
+        .map(note => note.id)
+
+      if (notesToRetry.length === 0) {
+        console.log(`No notes found with error type: ${errorType}`)
+        return
+      }
+
+      console.log(`Retrying ${notesToRetry.length} notes with error type: ${errorType}`)
+      await bulkRetryNotes(notesToRetry)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to retry notes by error type'
+      setError(errorMessage)
+      console.error('retryByErrorType error:', err)
+    }
+  }, [notes, bulkRetryNotes])
 
   const filterByErrorStatus = useCallback((hasError: boolean | null) => {
     setErrorFilter(hasError)
     setOffset(0)
     setLoading(true)
   }, [])
+
+  const getFilteredStats = useCallback(() => {
+    const total = notes.length
+    const withErrors = notes.filter(note => note.error_message).length
+    const processing = notes.filter(note => note.processing_started_at && !note.processed_at).length
+    const completed = notes.filter(note => note.transcription && note.analysis).length
+    const pending = notes.filter(note => !note.transcription && !note.error_message && !note.processing_started_at).length
+    const failed = withErrors // Same as withErrors
+
+    return {
+      total,
+      withErrors,
+      processing,
+      completed,
+      pending,
+      failed
+    }
+  }, [notes])
+
+  const getErrorBreakdown = useCallback((): Record<string, number> => {
+    const errorBreakdown: Record<string, number> = {}
+    
+    notes.forEach(note => {
+      if (note.error_message) {
+        const message = note.error_message.toLowerCase()
+        let category = 'unknown'
+        
+        if (message.includes('timeout')) {
+          category = 'timeout'
+        } else if (message.includes('rate limit') || message.includes('too many requests')) {
+          category = 'rate_limit'
+        } else if (message.includes('network') || message.includes('connection')) {
+          category = 'network'
+        } else if (message.includes('openai') || message.includes('api')) {
+          category = 'api_error'
+        } else if (message.includes('validation') || message.includes('invalid')) {
+          category = 'validation'
+        } else if (message.includes('storage') || message.includes('file')) {
+          category = 'storage'
+        } else if (message.includes('authentication') || message.includes('authorization')) {
+          category = 'auth'
+        } else if (message.includes('circuit breaker')) {
+          category = 'circuit_breaker'
+        }
+        
+        errorBreakdown[category] = (errorBreakdown[category] || 0) + 1
+      }
+    })
+    
+    return errorBreakdown
+  }, [notes])
+
+  // Enhanced real-time updates using Supabase subscriptions
+  useEffect(() => {
+    if (!notes.length) return
+
+    const subscription = supabase
+      .channel('notes_changes')
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'notes',
+          filter: `id=in.(${notes.map(n => n.id).join(',')})`
+        }, 
+        (payload) => {
+          console.log('Real-time note update received:', payload.new)
+          setNotes(prev => prev.map(note => 
+            note.id === payload.new.id 
+              ? { ...note, ...payload.new }
+              : note
+          ))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [notes.map(n => n.id).join(',')]) // Dependency on note IDs
 
   // Initial load and when search or error filter changes
   useEffect(() => {
@@ -206,6 +521,12 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     loadMore,
     retryNote,
     retryFailedNotes,
+    clearAllErrors,
     filterByErrorStatus,
+    bulkRetryNotes,
+    getFilteredStats,
+    getErrorBreakdown,
+    bulkClearErrors,
+    retryByErrorType,
   }
 }

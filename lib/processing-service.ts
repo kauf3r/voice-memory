@@ -21,12 +21,107 @@ interface ProcessingResult {
   analysis?: any
 }
 
+interface ProcessingMetrics {
+  startTime: number
+  endTime?: number
+  transcriptionTime?: number
+  analysisTime?: number
+  totalTime?: number
+  attempts: number
+  errorCategory?: string
+  processingStage?: 'initialization' | 'transcription' | 'analysis' | 'saving' | 'completed'
+}
+
+// Enhanced circuit breaker for OpenAI API calls
+class CircuitBreaker {
+  private failures = 0
+  private lastFailureTime = 0
+  private isOpen = false
+  private readonly threshold = 5 // failures
+  private readonly timeout = 5 * 60 * 1000 // 5 minutes
+  private readonly resetTimeout = 30 * 1000 // 30 seconds
+  private readonly errorTypes = new Map<string, number>()
+
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.isOpen) {
+      if (Date.now() - this.lastFailureTime > this.resetTimeout) {
+        this.isOpen = false
+        this.failures = 0
+        console.log('Circuit breaker: resetting to closed state')
+      } else {
+        throw new Error('Circuit breaker is open - OpenAI API temporarily unavailable')
+      }
+    }
+
+    try {
+      const result = await operation()
+      // Success - reset failure count
+      this.failures = 0
+      return result
+    } catch (error) {
+      this.failures++
+      this.lastFailureTime = Date.now()
+      
+      // Track error types for better debugging
+      if (error instanceof Error) {
+        const errorType = this.categorizeError(error.message)
+        this.errorTypes.set(errorType, (this.errorTypes.get(errorType) || 0) + 1)
+      }
+      
+      if (this.failures >= this.threshold) {
+        this.isOpen = true
+        console.log(`Circuit breaker: opened after ${this.failures} failures`)
+        console.log('Error type distribution:', Object.fromEntries(this.errorTypes))
+      }
+      
+      throw error
+    }
+  }
+
+  private categorizeError(errorMessage: string): string {
+    if (errorMessage.includes('rate limit')) return 'rate_limit'
+    if (errorMessage.includes('timeout')) return 'timeout'
+    if (errorMessage.includes('network')) return 'network'
+    if (errorMessage.includes('authentication')) return 'auth'
+    if (errorMessage.includes('quota')) return 'quota'
+    return 'unknown'
+  }
+
+  getStatus() {
+    return {
+      isOpen: this.isOpen,
+      failures: this.failures,
+      errorTypes: Object.fromEntries(this.errorTypes),
+      lastFailureTime: this.lastFailureTime
+    }
+  }
+}
+
 export class ProcessingService {
   private supabase = createServiceClient()
+  private circuitBreaker = new CircuitBreaker()
+  private readonly PROCESSING_TIMEOUT_MINUTES = parseInt(process.env.PROCESSING_TIMEOUT_MINUTES || '15')
+  private processingMetrics = new Map<string, ProcessingMetrics>()
+  private processingSummaryMetrics = {
+    totalProcessed: 0,
+    totalSuccessful: 0,
+    totalFailed: 0,
+    averageProcessingTime: 0,
+    errorCategoryBreakdown: new Map<string, number>(),
+    lastResetTime: Date.now()
+  }
 
   // Public method for processing individual notes with locking
   async processNote(noteId: string, userId?: string, forceReprocess: boolean = false): Promise<ProcessingResult> {
     console.log(`Processing note ${noteId} (force: ${forceReprocess})`)
+    const metrics: ProcessingMetrics = { 
+      startTime: Date.now(), 
+      attempts: 0,
+      processingStage: 'initialization'
+    }
+
+    // Store metrics for monitoring
+    this.processingMetrics.set(noteId, metrics)
 
     // Verify error tracking migration is applied
     const errorTrackingAvailable = await hasErrorTracking()
@@ -40,10 +135,11 @@ export class ProcessingService {
         const { data: lockResult, error: lockError } = await this.supabase
           .rpc('acquire_processing_lock', { 
             p_note_id: noteId,
-            p_lock_timeout_minutes: 15 
+            p_lock_timeout_minutes: this.PROCESSING_TIMEOUT_MINUTES 
           })
 
         if (lockError) {
+          metrics.errorCategory = 'lock_acquisition'
           throw new Error(`Failed to acquire processing lock: ${lockError.message}`)
         }
 
@@ -74,6 +170,40 @@ export class ProcessingService {
         }
       }
 
+      // Enhanced timeout validation with more detailed checks
+      const { data: note } = await this.supabase
+        .from('notes')
+        .select('processing_started_at, processing_attempts')
+        .eq('id', noteId)
+        .single()
+
+      if (note?.processing_started_at && !forceReprocess) {
+        const processingStartTime = new Date(note.processing_started_at).getTime()
+        const timeoutMs = this.PROCESSING_TIMEOUT_MINUTES * 60 * 1000
+        const elapsedTime = Date.now() - processingStartTime
+        
+        if (elapsedTime > timeoutMs) {
+          await this.releaseProcessingLockWithError(noteId, `Processing timeout exceeded after ${Math.floor(elapsedTime / 1000)}s (max: ${this.PROCESSING_TIMEOUT_MINUTES}m)`)
+          metrics.errorCategory = 'timeout'
+          throw new Error(`Processing timeout exceeded after ${Math.floor(elapsedTime / 1000)}s`)
+        }
+        
+        // Enhanced warning system for long-running processes
+        const warningThresholds = [
+          { threshold: 0.5, message: '50%' },
+          { threshold: 0.7, message: '70%' }, 
+          { threshold: 0.9, message: '90%' }
+        ]
+        
+        for (const { threshold, message } of warningThresholds) {
+          if (elapsedTime > (timeoutMs * threshold) && elapsedTime < (timeoutMs * (threshold + 0.1))) {
+            console.warn(`⚠️ Note ${noteId} has been processing for ${Math.floor(elapsedTime / 1000)}s (${message} of timeout limit)`)
+          }
+        }
+      }
+
+      metrics.attempts = (note?.processing_attempts || 0) + 1
+
       // Get the note with FOR UPDATE lock for additional safety
       let noteQuery = this.supabase
         .from('notes')
@@ -84,44 +214,75 @@ export class ProcessingService {
         noteQuery = noteQuery.eq('user_id', userId)
       }
       
-      const { data: note, error: fetchError } = await noteQuery.single()
+      const { data: fullNote, error: fetchError } = await noteQuery.single()
 
-      if (fetchError || !note) {
+      if (fetchError || !fullNote) {
         // Release lock on error
+        metrics.errorCategory = 'note_fetch'
         await this.releaseProcessingLockWithError(noteId, `Note not found: ${fetchError?.message}`)
         throw new Error(`Note not found: ${fetchError?.message}`)
       }
 
       // Check if already processed (double-check)
-      if (note.processed_at && !forceReprocess) {
+      if (fullNote.processed_at && !forceReprocess) {
         await this.releaseProcessingLock(noteId)
         return {
           success: true,
-          transcription: note.transcription,
-          analysis: note.analysis,
+          transcription: fullNote.transcription,
+          analysis: fullNote.analysis,
           warning: 'Note already processed'
         }
       }
 
       // Convert note to job format
       const job: ProcessingJob & { transcription?: string } = {
-        queue_id: note.id,
-        note_id: note.id,
-        user_id: note.user_id,
-        audio_url: note.audio_url,
-        transcription: note.transcription,
+        queue_id: fullNote.id,
+        note_id: fullNote.id,
+        user_id: fullNote.user_id,
+        audio_url: fullNote.audio_url,
+        transcription: fullNote.transcription,
         priority: 1,
-        attempts: note.processing_attempts || 0,
-        recorded_at: note.recorded_at
+        attempts: fullNote.processing_attempts || 0,
+        recorded_at: fullNote.recorded_at
       }
 
-      const result = await this.processJobWithLock(job)
+      const result = await this.processJobWithLock(job, metrics)
       
+      metrics.endTime = Date.now()
+      metrics.totalTime = metrics.endTime - metrics.startTime
+      metrics.processingStage = 'completed'
+      
+      // Log comprehensive processing metrics
+      console.log(`Processing metrics for note ${noteId}:`, {
+        totalTime: metrics.totalTime,
+        transcriptionTime: metrics.transcriptionTime,
+        analysisTime: metrics.analysisTime,
+        attempts: metrics.attempts,
+        success: result.success,
+        errorCategory: metrics.errorCategory,
+        processingStage: metrics.processingStage
+      })
+
+      // Collect metrics for monitoring and performance tracking
+      this.collectProcessingMetrics(noteId, metrics, result.success)
+
       // Release lock on success or error (handled in processJobWithLock)
       return result
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      // Enhanced error categorization for better debugging and retry logic
+      if (!metrics.errorCategory) {
+        metrics.errorCategory = this.categorizeError(errorMessage)
+      }
+      
+      console.log(`Processing failed for note ${noteId} with error category: ${metrics.errorCategory} at stage: ${metrics.processingStage}`)
+      
+      // Collect failure metrics
+      metrics.endTime = Date.now()
+      metrics.totalTime = metrics.endTime - metrics.startTime
+      this.collectProcessingMetrics(noteId, metrics, false)
       
       // Release lock with error
       await this.releaseProcessingLockWithError(noteId, errorMessage)
@@ -130,6 +291,11 @@ export class ProcessingService {
         success: false,
         error: errorMessage
       }
+    } finally {
+      // Clean up metrics after a delay to allow for monitoring
+      setTimeout(() => {
+        this.processingMetrics.delete(noteId)
+      }, 5 * 60 * 1000) // Keep for 5 minutes
     }
   }
 
@@ -137,8 +303,15 @@ export class ProcessingService {
     processed: number
     failed: number
     errors: string[]
+    metrics?: {
+      totalTime: number
+      averageProcessingTime: number
+      successRate: number
+      errorBreakdown: Record<string, number>
+    }
   }> {
     console.log(`Starting batch processing (max ${batchSize} items)`)
+    const batchStartTime = Date.now()
 
     // Verify error tracking migration is applied
     const errorTrackingAvailable = await hasErrorTracking()
@@ -150,12 +323,13 @@ export class ProcessingService {
       // First cleanup any abandoned processing locks
       await this.cleanupAbandonedLocks()
 
-      // Get notes available for processing using the new function
+      // Get notes available for processing with optimized ordering
+      // Prioritize notes with fewer processing attempts first for better success rates
       const { data: notes, error: notesError } = await this.supabase
         .rpc('get_next_notes_for_processing', {
           p_user_id: null, // Process for all users in batch
           p_limit: batchSize,
-          p_lock_timeout_minutes: 15
+          p_lock_timeout_minutes: this.PROCESSING_TIMEOUT_MINUTES
         })
 
       if (notesError) {
@@ -167,20 +341,53 @@ export class ProcessingService {
         return { processed: 0, failed: 0, errors: [] }
       }
 
-      console.log(`Got ${notes.length} notes to process`)
+      // Enhanced batch processing order optimization
+      // Priority system: 1) Fresh notes (0 attempts), 2) Lower attempts, 3) Older records, 4) Shorter audio
+      const sortedNotes = notes.sort((a: any, b: any) => {
+        const attemptsA = a.processing_attempts || 0
+        const attemptsB = b.processing_attempts || 0
+        
+        // First priority: fresh notes with 0 attempts go first
+        if (attemptsA === 0 && attemptsB > 0) return -1
+        if (attemptsB === 0 && attemptsA > 0) return 1
+        
+        // Second priority: fewer attempts
+        if (attemptsA !== attemptsB) {
+          return attemptsA - attemptsB
+        }
+        
+        // Third priority: older notes (recorded earlier) to prevent starvation
+        const timeA = new Date(a.recorded_at).getTime()
+        const timeB = new Date(b.recorded_at).getTime()
+        if (timeA !== timeB) {
+          return timeA - timeB
+        }
+        
+        // Fourth priority: shorter duration for faster processing
+        const durationA = a.duration_seconds || 0
+        const durationB = b.duration_seconds || 0
+        return durationA - durationB
+      })
+      
+      console.log(`Got ${sortedNotes.length} notes to process (prioritized: fresh → low attempts → older → shorter)`)
+      console.log(`Priority breakdown: ${sortedNotes.filter((n: any) => (n.processing_attempts || 0) === 0).length} fresh, ${sortedNotes.filter((n: any) => (n.processing_attempts || 0) > 0).length} retries`)
 
       let processed = 0
       let failed = 0
       const errors: string[] = []
+      const processingTimes: number[] = []
+      const errorBreakdown: Record<string, number> = {}
 
-      // Process notes with proper locking
-      for (const note of notes) {
+      // Process notes with proper locking and enhanced error tracking
+      for (const note of sortedNotes) {
+        const noteStartTime = Date.now()
+        
         try {
           // Acquire lock for this specific note
           const { data: lockResult, error: lockError } = await this.supabase
             .rpc('acquire_processing_lock', { 
               p_note_id: note.id,
-              p_lock_timeout_minutes: 15 
+              p_lock_timeout_minutes: this.PROCESSING_TIMEOUT_MINUTES 
             })
 
           if (lockError || !lockResult) {
@@ -189,38 +396,79 @@ export class ProcessingService {
           }
 
           const result = await this.processNote(note.id, note.user_id, false)
+          const noteEndTime = Date.now()
+          const noteProcessingTime = noteEndTime - noteStartTime
+          processingTimes.push(noteProcessingTime)
           
           if (result.success) {
             processed++
-            console.log(`Successfully processed note ${note.id}`)
+            console.log(`✅ Successfully processed note ${note.id} in ${noteProcessingTime}ms (attempt ${(note.processing_attempts || 0) + 1})`)
           } else {
             failed++
-            errors.push(`Note ${note.id}: ${result.error}`)
-            console.error(`Failed to process note ${note.id}:`, result.error)
+            const errorMsg = `Note ${note.id}: ${result.error}`
+            errors.push(errorMsg)
+            
+            // Track error categories for better insights
+            const errorCategory = this.categorizeError(result.error || 'unknown')
+            errorBreakdown[errorCategory] = (errorBreakdown[errorCategory] || 0) + 1
+            
+            console.error(`❌ Failed to process note ${note.id} (attempt ${(note.processing_attempts || 0) + 1}):`, result.error)
           }
         } catch (error) {
           failed++
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           errors.push(`Note ${note.id}: ${errorMessage}`)
-          console.error(`Failed to process note ${note.id}:`, error)
+          
+          // Track error categories
+          const errorCategory = this.categorizeError(errorMessage)
+          errorBreakdown[errorCategory] = (errorBreakdown[errorCategory] || 0) + 1
+          
+          console.error(`💥 Failed to process note ${note.id}:`, error)
           
           // Release lock on unexpected error
           await this.releaseProcessingLockWithError(note.id, errorMessage)
         }
 
-        // Small delay between jobs to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500))
+        // Adaptive delay between jobs based on circuit breaker status and error rate
+        const circuitBreakerStatus = this.circuitBreaker.getStatus()
+        const currentErrorRate = failed / (processed + failed)
+        
+        let delay = 500 // Base delay
+        if (circuitBreakerStatus.isOpen) {
+          delay = 2000 // Longer delay if circuit breaker is open
+        } else if (circuitBreakerStatus.failures > 2 || currentErrorRate > 0.3) {
+          delay = 1000 // Medium delay for high error rates
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, delay))
       }
 
-      console.log(`Batch processing completed: ${processed} successful, ${failed} failed`)
-      return { processed, failed, errors }
+      const batchEndTime = Date.now()
+      const totalTime = batchEndTime - batchStartTime
+      const averageProcessingTime = processingTimes.length > 0 
+        ? processingTimes.reduce((a, b) => a + b, 0) / processingTimes.length 
+        : 0
+      const successRate = sortedNotes.length > 0 ? (processed / sortedNotes.length) * 100 : 0
+
+      const metrics = {
+        totalTime,
+        averageProcessingTime,
+        successRate,
+        errorBreakdown
+      }
+
+      console.log(`📊 Batch processing completed: ${processed} successful, ${failed} failed (${successRate.toFixed(1)}% success rate)`)
+      console.log(`📈 Batch metrics:`, metrics)
+      console.log(`⚡ Circuit breaker status:`, this.circuitBreaker.getStatus())
+      
+      return { processed, failed, errors, metrics }
 
     } finally {
-      console.log('Batch processing finished')
+      console.log('🏁 Batch processing finished')
     }
   }
 
-  private async processJobWithLock(job: ProcessingJob & { transcription?: string }): Promise<ProcessingResult> {
+  private async processJobWithLock(job: ProcessingJob & { transcription?: string }, metrics: ProcessingMetrics): Promise<ProcessingResult> {
     console.log(`Processing job ${job.queue_id} for note ${job.note_id}`)
 
     try {
@@ -228,6 +476,9 @@ export class ProcessingService {
 
       // Step 1: Transcribe audio (skip if transcription already exists)
       if (!transcription) {
+        metrics.processingStage = 'transcription'
+        const transcriptionStartTime = Date.now()
+        
         // Get audio file from storage
         const filePath = getFilePathFromUrl(job.audio_url)
         const { data: audioData, error: storageError } = await this.supabase.storage
@@ -235,6 +486,7 @@ export class ProcessingService {
           .download(filePath)
 
         if (storageError || !audioData) {
+          metrics.errorCategory = 'storage'
           throw new Error(`Could not retrieve audio file: ${storageError?.message}`)
         }
 
@@ -252,13 +504,18 @@ export class ProcessingService {
         // Use the more robust Buffer-based file creation for better OpenAI compatibility
         const audioFile = createServerFileFromBuffer(nodeBuffer, `${job.note_id}.${extension}`, mimeType)
 
-        const { text: transcriptionResult, error: transcriptionError } = await transcribeAudio(audioFile)
+        // Use circuit breaker for OpenAI API calls
+        const { text: transcriptionResult, error: transcriptionError } = await this.circuitBreaker.execute(
+          () => transcribeAudio(audioFile)
+        )
 
         if (transcriptionError || !transcriptionResult) {
+          metrics.errorCategory = 'transcription'
           throw new Error(`Transcription failed: ${transcriptionError?.message}`)
         }
 
         transcription = transcriptionResult
+        metrics.transcriptionTime = Date.now() - transcriptionStartTime
 
         // Save partial progress (transcription)
         await this.supabase
@@ -281,17 +538,23 @@ export class ProcessingService {
         ''
 
       // Step 3: Analyze transcription
-      const { analysis, error: analysisError, warning } = await analyzeTranscription(
-        transcription, 
-        knowledgeContext,
-        job.recorded_at
+      metrics.processingStage = 'analysis'
+      const analysisStartTime = Date.now()
+      
+      // Use circuit breaker for OpenAI API calls
+      const { analysis, error: analysisError, warning } = await this.circuitBreaker.execute(
+        () => analyzeTranscription(transcription, knowledgeContext, job.recorded_at)
       )
 
       if (analysisError) {
+        metrics.errorCategory = 'analysis'
         throw new Error(`Analysis failed: ${analysisError.message}`)
       }
 
+      metrics.analysisTime = Date.now() - analysisStartTime
+
       // Step 4: Update note with results and release lock
+      metrics.processingStage = 'saving'
       await this.supabase
         .from('notes')
         .update({
@@ -481,6 +744,182 @@ export class ProcessingService {
       console.error('Failed to get processing stats:', error)
       return { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 }
     }
+  }
+
+  private categorizeError(errorMessage: string): string {
+    const message = errorMessage.toLowerCase()
+    
+    // Enhanced error categorization for better debugging and retry strategies
+    if (message.includes('timeout') || message.includes('time out')) {
+      return 'timeout'
+    } else if (message.includes('rate limit') || message.includes('too many requests')) {
+      return 'rate_limit'
+    } else if (message.includes('openai') || message.includes('api') || message.includes('model')) {
+      return 'api_error'
+    } else if (message.includes('validation') || message.includes('invalid')) {
+      return 'validation'
+    } else if (message.includes('network') || message.includes('connection') || message.includes('fetch')) {
+      return 'network'
+    } else if (message.includes('storage') || message.includes('file') || message.includes('download')) {
+      return 'storage'
+    } else if (message.includes('lock') || message.includes('concurrent')) {
+      return 'concurrency'
+    } else if (message.includes('authentication') || message.includes('authorization')) {
+      return 'auth'
+    } else if (message.includes('quota') || message.includes('billing')) {
+      return 'quota'
+    } else if (message.includes('circuit breaker')) {
+      return 'circuit_breaker'
+    } else if (message.includes('memory') || message.includes('resource')) {
+      return 'resource'
+    } else {
+      return 'unknown'
+    }
+  }
+
+  private collectProcessingMetrics(noteId: string, metrics: ProcessingMetrics, success: boolean): void {
+    // Update summary metrics for monitoring dashboard
+    this.processingSummaryMetrics.totalProcessed++
+    
+    if (success) {
+      this.processingSummaryMetrics.totalSuccessful++
+    } else {
+      this.processingSummaryMetrics.totalFailed++
+      
+      // Track error category distribution
+      if (metrics.errorCategory) {
+        const current = this.processingSummaryMetrics.errorCategoryBreakdown.get(metrics.errorCategory) || 0
+        this.processingSummaryMetrics.errorCategoryBreakdown.set(metrics.errorCategory, current + 1)
+      }
+    }
+    
+    // Update rolling average processing time
+    if (metrics.totalTime) {
+      const currentAvg = this.processingSummaryMetrics.averageProcessingTime
+      const totalProcessed = this.processingSummaryMetrics.totalProcessed
+      this.processingSummaryMetrics.averageProcessingTime = 
+        ((currentAvg * (totalProcessed - 1)) + metrics.totalTime) / totalProcessed
+    }
+    
+    // Store detailed metrics for monitoring (could be enhanced to send to external monitoring service)
+    const metricData = {
+      noteId,
+      success,
+      totalTime: metrics.totalTime,
+      transcriptionTime: metrics.transcriptionTime,
+      analysisTime: metrics.analysisTime,
+      attempts: metrics.attempts,
+      errorCategory: metrics.errorCategory,
+      processingStage: metrics.processingStage,
+      timestamp: new Date().toISOString()
+    }
+
+    // Log metrics for now (could be sent to monitoring service like DataDog, New Relic, etc.)
+    console.log('📊 Processing metric collected:', metricData)
+    
+    // Reset summary metrics every hour to prevent memory growth
+    const hoursSinceReset = (Date.now() - this.processingSummaryMetrics.lastResetTime) / (1000 * 60 * 60)
+    if (hoursSinceReset >= 1) {
+      this.resetSummaryMetrics()
+    }
+  }
+
+  private resetSummaryMetrics(): void {
+    console.log('🔄 Resetting summary metrics after 1 hour')
+    this.processingSummaryMetrics = {
+      totalProcessed: 0,
+      totalSuccessful: 0,
+      totalFailed: 0,
+      averageProcessingTime: 0,
+      errorCategoryBreakdown: new Map<string, number>(),
+      lastResetTime: Date.now()
+    }
+  }
+
+  // New method to get current processing metrics for monitoring
+  getProcessingMetrics(): Map<string, ProcessingMetrics> {
+    return new Map(this.processingMetrics)
+  }
+
+  // New method to get circuit breaker status
+  getCircuitBreakerStatus() {
+    return this.circuitBreaker.getStatus()
+  }
+
+  // New method to get summary metrics for monitoring dashboards
+  getSummaryMetrics() {
+    const errorBreakdown = Object.fromEntries(this.processingSummaryMetrics.errorCategoryBreakdown)
+    const successRate = this.processingSummaryMetrics.totalProcessed > 0 
+      ? (this.processingSummaryMetrics.totalSuccessful / this.processingSummaryMetrics.totalProcessed) * 100 
+      : 0
+    
+    return {
+      ...this.processingSummaryMetrics,
+      errorCategoryBreakdown: errorBreakdown,
+      successRate,
+      currentlyProcessing: this.processingMetrics.size,
+      uptime: Date.now() - this.processingSummaryMetrics.lastResetTime
+    }
+  }
+
+  // New method for health checks and monitoring
+  async getSystemHealthMetrics() {
+    try {
+      const circuitBreakerStatus = this.getCircuitBreakerStatus()
+      const summaryMetrics = this.getSummaryMetrics()
+      const currentlyProcessing = this.processingMetrics.size
+      
+      // Check for stuck processing (processing for more than 2x timeout)
+      const stuckProcessingThreshold = (this.PROCESSING_TIMEOUT_MINUTES * 2) * 60 * 1000
+      const stuckNotes = Array.from(this.processingMetrics.entries())
+        .filter(([_, metrics]) => (Date.now() - metrics.startTime) > stuckProcessingThreshold)
+        .map(([noteId]) => noteId)
+      
+      return {
+        circuitBreaker: circuitBreakerStatus,
+        summary: summaryMetrics,
+        currentlyProcessing,
+        stuckNotes,
+        healthStatus: this.determineHealthStatus(circuitBreakerStatus, summaryMetrics, stuckNotes.length),
+        timestamp: new Date().toISOString()
+      }
+    } catch (error) {
+      console.error('Failed to get system health metrics:', error)
+      return {
+        healthStatus: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      }
+    }
+  }
+
+  private determineHealthStatus(circuitBreaker: any, summary: any, stuckCount: number): 'healthy' | 'degraded' | 'unhealthy' | 'critical' {
+    // Critical: Circuit breaker open
+    if (circuitBreaker.isOpen) {
+      return 'critical'
+    }
+    
+    // Critical: High number of stuck notes
+    if (stuckCount > 5) {
+      return 'critical'
+    }
+    
+    // Unhealthy: Very low success rate
+    if (summary.successRate < 50 && summary.totalProcessed > 10) {
+      return 'unhealthy'
+    }
+    
+    // Degraded: Circuit breaker has recent failures or moderate success rate
+    if (circuitBreaker.failures > 3 || (summary.successRate < 80 && summary.totalProcessed > 5)) {
+      return 'degraded'
+    }
+    
+    // Degraded: Multiple stuck notes
+    if (stuckCount > 2) {
+      return 'degraded'
+    }
+    
+    return 'healthy'
   }
 }
 
