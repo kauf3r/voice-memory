@@ -93,7 +93,7 @@ export default function UploadButton({
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           const currentProgress = prev[fileId] || 0
-          if (currentProgress >= 90) {
+          if (currentProgress >= 95) {
             clearInterval(progressInterval)
             return prev
           }
@@ -113,20 +113,47 @@ export default function UploadButton({
       
       console.log('Sending auth header:', `Bearer ${session.access_token.substring(0, 20)}...`)
       
+      // Create AbortController for timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        controller.abort()
+        console.error('Upload timeout after 30 seconds')
+      }, 30000) // 30 second timeout
+      
+      console.log('Starting upload request for:', file.name)
+      
       // Upload via API route
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
         headers: {
           'Authorization': `Bearer ${session.access_token}`
+        },
+        signal: controller.signal
+      }).catch(error => {
+        clearTimeout(timeoutId)
+        if (error.name === 'AbortError') {
+          throw new Error('Upload timed out. Please try again.')
         }
+        throw error
       })
+      
+      clearTimeout(timeoutId)
+      console.log('Upload response received:', response.status, response.statusText)
 
       clearInterval(progressInterval)
       setUploadProgress(prev => ({ ...prev, [fileId]: 100 }))
 
       if (!response.ok) {
-        const errorData = await response.json()
+        console.error('Upload failed with status:', response.status)
+        let errorData
+        try {
+          errorData = await response.json()
+          console.error('Error data:', errorData)
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError)
+          errorData = { error: 'Failed to parse server response' }
+        }
         
         // Enhanced error handling with more details
         if (response.status === 413) {
@@ -146,9 +173,18 @@ export default function UploadButton({
         }
       }
 
-      const result = await response.json()
+      console.log('Parsing successful response...')
+      let result
+      try {
+        result = await response.json()
+        console.log('Upload result:', result)
+      } catch (parseError) {
+        console.error('Failed to parse success response:', parseError)
+        throw new Error('Server response was invalid')
+      }
       
       if (result.success && result.url) {
+        console.log('Upload completed successfully, URL:', result.url)
         onUploadComplete?.(result.url, file)
         
         // Clean up progress after a delay
@@ -163,6 +199,8 @@ export default function UploadButton({
         throw new Error('Upload response was invalid')
       }
     } catch (error) {
+      console.error('Upload error caught:', error)
+      clearInterval(progressInterval)
       setUploadProgress(prev => {
         const newProgress = { ...prev }
         delete newProgress[fileId]
