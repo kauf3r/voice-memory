@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from './AuthProvider'
 import ErrorMessage from './ErrorMessage'
 import LoadingSpinner from './LoadingSpinner'
@@ -12,6 +12,19 @@ export default function LoginForm() {
   const [sent, setSent] = useState(false)
   
   const { signInWithEmail } = useAuth()
+
+  // Check for error in URL parameters (from auth callback)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const urlError = urlParams.get('error')
+      if (urlError) {
+        setError(decodeURIComponent(urlError))
+        // Clear the error from URL
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
