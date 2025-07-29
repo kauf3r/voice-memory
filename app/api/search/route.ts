@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 
+// Force dynamic behavior to handle cookies and searchParams
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 interface SearchResult {
   id: string
   title: string

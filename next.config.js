@@ -1,15 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Minimal config for fast development startup
+  // Production-optimized configuration
   experimental: {
-    // Disable experimental features for faster startup
+    // Enable for better server-side performance
+    serverComponentsExternalPackages: ['@supabase/supabase-js']
   },
 
-  // Essential optimizations only
-  compress: false, // Disable in dev for speed
+  // Production optimizations
+  compress: process.env.NODE_ENV === 'production',
   poweredByHeader: false,
   
-  // Minimal headers for development
+  // Headers for both development and production
   async headers() {
     return [
       {
@@ -20,24 +21,45 @@ const nextConfig = {
             key: 'Cache-Control',
             value: 'no-store, no-cache, must-revalidate',
           },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: process.env.NODE_ENV === 'development' ? '*' : 'https://voice-memory-tau.vercel.app',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, POST, PUT, DELETE, OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'X-Requested-With, Content-Type, Authorization',
+          },
         ],
       },
     ]
   },
 
-  // Skip redirects in development
+  // Production redirects
   async redirects() {
-    return []
+    return [
+      {
+        source: '/dashboard',
+        destination: '/',
+        permanent: true,
+      },
+    ]
   },
 
-  // Development-specific optimizations
-  swcMinify: false, // Disable minification in dev
+  // Environment-specific optimizations
+  swcMinify: process.env.NODE_ENV === 'production',
   eslint: {
-    ignoreDuringBuilds: true, // Skip ESLint during dev builds
+    ignoreDuringBuilds: process.env.NODE_ENV === 'development',
   },
   typescript: {
-    ignoreBuildErrors: true, // Skip TypeScript checks during dev builds
+    ignoreBuildErrors: process.env.NODE_ENV === 'development',
   },
+
+  // Output configuration for Vercel
+  output: 'standalone',
 }
 
 module.exports = nextConfig

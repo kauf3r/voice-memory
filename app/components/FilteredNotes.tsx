@@ -28,23 +28,42 @@ export default function FilteredNotes({ filterType, filterValue, onClose }: Filt
 
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
+      if (sessionError) {
+        console.error('Session error:', sessionError)
+        throw new Error(`Session error: ${sessionError.message}`)
+      }
+      
       if (!session) {
-        throw new Error('No active session')
+        console.error('No active session found')
+        throw new Error('No active session. Please log in again.')
       }
 
-      const response = await fetch(`/api/notes/filter?type=${filterType}&value=${encodeURIComponent(filterValue)}`, {
+      console.log('Making filtered notes request with token:', session.access_token?.substring(0, 20) + '...')
+
+      const url = `/api/notes/filter?type=${filterType}&value=${encodeURIComponent(filterValue)}`
+      console.log('Fetch URL:', url)
+
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
         }
       })
 
+      console.log('Response status:', response.status)
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
+
       if (!response.ok) {
-        throw new Error('Failed to fetch filtered notes')
+        const errorData = await response.json().catch(() => ({}))
+        console.error('API Error:', errorData)
+        throw new Error(errorData.error || `Failed to fetch filtered notes (${response.status})`)
       }
 
       const data = await response.json()
+      console.log('Received data:', data)
       setNotes(data.notes || [])
     } catch (err) {
+      console.error('fetchFilteredNotes error:', err)
       setError(err instanceof Error ? err.message : 'Failed to load notes')
     } finally {
       setLoading(false)
