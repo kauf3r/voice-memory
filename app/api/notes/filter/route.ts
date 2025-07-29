@@ -14,42 +14,44 @@ export async function GET(request: NextRequest) {
     let authError = null
     
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    console.log('Filter API - Auth header present:', !!authHeader)
+    
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '')
+      console.log('Filter API - Token length:', token.length)
+      
       try {
         const { data, error } = await supabase.auth.getUser(token)
         
         if (error) {
-          console.log('Auth header error:', error)
+          console.log('Filter API - Auth header error:', error.message)
           authError = error
         } else {
           user = data?.user
-          console.log('Auth header success, user:', user?.id)
-          // Set the session for this request
-          await supabase.auth.setSession({
-            access_token: token,
-            refresh_token: token
-          })
+          console.log('Filter API - Auth header success, user:', user?.id)
         }
       } catch (e) {
-        console.log('Auth header exception:', e)
+        console.log('Filter API - Auth header exception:', e)
         authError = e
       }
+    } else {
+      console.log('Filter API - No valid auth header found')
     }
     
     // If no auth header or it failed, try to get from cookies
     if (!user) {
+      console.log('Filter API - Trying cookie authentication')
       try {
         const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
         if (cookieError) {
-          console.log('Cookie auth error:', cookieError)
+          console.log('Filter API - Cookie auth error:', cookieError.message)
           authError = cookieError
         } else {
-          console.log('Cookie auth success, user:', cookieUser?.id)
+          console.log('Filter API - Cookie auth success, user:', cookieUser?.id)
           user = cookieUser
         }
       } catch (e) {
-        console.log('Cookie auth exception:', e)
+        console.log('Filter API - Cookie auth exception:', e)
         authError = e
       }
     }
@@ -85,11 +87,8 @@ export async function GET(request: NextRequest) {
     // Apply specific filters based on type
     switch (filterType) {
       case 'topic':
-        // Search in focus topics (primary and minor)
-        query = query.or(
-          `analysis->>focusTopics->primary.ilike.%${filterValue}%,` +
-          `analysis->>focusTopics->minor.cs.["${filterValue}"]`
-        )
+        // For topics, we'll do client-side filtering since JSON queries are complex
+        // Just get all notes with analysis for this user
         break
 
       case 'contact':
