@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 
+// Force dynamic behavior to handle cookies and searchParams
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = createServerClient()
@@ -12,33 +16,48 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (error) {
-        authError = error
-      } else {
-        user = data?.user
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
+      try {
+        const { data, error } = await supabase.auth.getUser(token)
+        
+        if (error) {
+          console.log('Auth header error:', error)
+          authError = error
+        } else {
+          user = data?.user
+          console.log('Auth header success, user:', user?.id)
+          // Set the session for this request
+          await supabase.auth.setSession({
+            access_token: token,
+            refresh_token: token
+          })
+        }
+      } catch (e) {
+        console.log('Auth header exception:', e)
+        authError = e
       }
     }
     
     // If no auth header or it failed, try to get from cookies
     if (!user) {
-      const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
-      if (cookieError) {
-        authError = cookieError
-      } else {
-        user = cookieUser
+      try {
+        const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
+        if (cookieError) {
+          console.log('Cookie auth error:', cookieError)
+          authError = cookieError
+        } else {
+          console.log('Cookie auth success, user:', cookieUser?.id)
+          user = cookieUser
+        }
+      } catch (e) {
+        console.log('Cookie auth exception:', e)
+        authError = e
       }
     }
     
     if (authError || !user) {
+      console.log('Final auth failure:', { authError, hasUser: !!user })
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized', details: authError?.message || 'No user found' },
         { status: 401 }
       )
     }
