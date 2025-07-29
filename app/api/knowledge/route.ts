@@ -22,11 +22,7 @@ export async function GET(request: NextRequest) {
         authError = error
       } else {
         user = data?.user
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
+        // No need to set session for API routes - getUser() is sufficient
       }
     }
     
@@ -162,11 +158,7 @@ export async function PUT(request: NextRequest) {
         authError = error
       } else {
         user = data?.user
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
+        // No need to set session for API routes - getUser() is sufficient
       }
     }
     
