@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { ProcessingStats } from '@/lib/types'
 import { useAuth } from '@/lib/hooks/use-auth'
 
@@ -64,9 +64,22 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
   const subscriptions = useRef<Map<StatsScope, Subscription>>(new Map())
   const intervals = useRef<Map<StatsScope, NodeJS.Timeout>>(new Map())
   const abortControllers = useRef<Map<StatsScope, AbortController>>(new Map())
+  
+  // Store current user and getAccessToken in refs to avoid dependency issues
+  const userRef = useRef(user)
+  const getAccessTokenRef = useRef(getAccessToken)
+  
+  // Update refs when values change
+  useEffect(() => {
+    userRef.current = user
+    getAccessTokenRef.current = getAccessToken
+  }, [user, getAccessToken])
 
   const fetchStats = useCallback(async (scope: StatsScope, showLoading = true) => {
-    if (!user) {
+    const currentUser = userRef.current
+    const currentGetAccessToken = getAccessTokenRef.current
+    
+    if (!currentUser) {
       setState(prev => ({
         ...prev,
         loading: { ...prev.loading, [scope]: false }
@@ -97,7 +110,7 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
       const controller = new AbortController()
       abortControllers.current.set(scope, controller)
 
-      const token = await getAccessToken()
+      const token = await currentGetAccessToken()
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       }
@@ -162,11 +175,11 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
         }))
       }
     }
-  }, [user, getAccessToken])
+  }, [])
 
   const refresh = useCallback(async (scope: StatsScope) => {
     await fetchStats(scope, true)
-  }, [fetchStats])
+  }, [])
 
   const subscribe = useCallback((scope: StatsScope, enabled = true, refreshInterval = scope === 'global' ? 10000 : 30000) => {
     const existing = subscriptions.current.get(scope)
@@ -205,7 +218,7 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
         intervals.current.set(scope, interval)
       }
     }
-  }, [fetchStats])
+  }, [])
 
   const unsubscribe = useCallback((scope: StatsScope) => {
     const existing = subscriptions.current.get(scope)
@@ -257,12 +270,12 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
     }
   }, [])
 
-  const contextValue: ProcessingStatsContextValue = {
+  const contextValue: ProcessingStatsContextValue = useMemo(() => ({
     ...state,
     refresh,
     subscribe,
     unsubscribe
-  }
+  }), [state, refresh, subscribe, unsubscribe])
 
   return (
     <ProcessingStatsContext.Provider value={contextValue}>

@@ -39,6 +39,17 @@ export default function FilteredNotes({ filterType, filterValue, onClose }: Filt
       }
 
       console.log('Making filtered notes request with token:', session.access_token?.substring(0, 20) + '...')
+      console.log('Filter details:', { filterType, filterValue })
+      
+      // Special debug logging for date filters
+      if (filterType === 'date') {
+        console.log('🗓️ DATE FILTER DEBUG:')
+        console.log('  Original filterValue:', filterValue)
+        console.log('  Encoded filterValue:', encodeURIComponent(filterValue))
+        console.log('  Expected date format: YYYY-MM-DD')
+        console.log('  Current user:', session.user?.id)
+        console.log('  Session expires:', new Date(session.expires_at! * 1000).toISOString())
+      }
 
       const url = `/api/notes/filter?type=${filterType}&value=${encodeURIComponent(filterValue)}`
       console.log('Fetch URL:', url)
@@ -61,6 +72,28 @@ export default function FilteredNotes({ filterType, filterValue, onClose }: Filt
 
       const data = await response.json()
       console.log('Received data:', data)
+      
+      // Special debug logging for date filters
+      if (filterType === 'date') {
+        console.log('🗓️ DATE FILTER RESPONSE DEBUG:')
+        console.log('  Response success:', data.success)
+        console.log('  Notes count:', data.notes?.length || 0)
+        console.log('  Filter applied:', data.filter)
+        
+        if (data.notes?.length === 0) {
+          console.log('  ⚠️ NO NOTES FOUND - Possible issues:')
+          console.log('    1. Date format mismatch')
+          console.log('    2. User has no notes on this date')
+          console.log('    3. Notes exist but have no analysis')
+          console.log('    4. Timezone conversion issue')
+        } else {
+          console.log('  ✅ Notes found for date filter')
+          data.notes?.forEach((note: any, index: number) => {
+            console.log(`    ${index + 1}. Note ${note.id} - ${note.recorded_at}`)
+          })
+        }
+      }
+      
       setNotes(data.notes || [])
     } catch (err) {
       console.error('fetchFilteredNotes error:', err)

@@ -16,78 +16,10 @@ if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Import OpenAI functions directly
-import OpenAI from 'openai';
+// Import OpenAI functions from our library
+import { analyzeTranscription, transcribeAudio } from '../lib/openai';
 
-const openai = new OpenAI({
-  apiKey: openaiApiKey,
-});
 
-async function transcribeAudio(audioFile: File): Promise<{ text?: string, error?: Error }> {
-  try {
-    console.log('  🎤 Starting transcription...');
-    
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
-      language: 'en', // Optional: specify language for better accuracy
-      response_format: 'text'
-    });
-
-    return { text: transcription };
-  } catch (error) {
-    console.error('Transcription error:', error);
-    return { error: error as Error };
-  }
-}
-
-async function analyzeTranscription(
-  transcription: string, 
-  knowledgeContext: string = ''
-): Promise<{ analysis?: any, error?: Error }> {
-  try {
-    console.log('  🧠 Starting analysis...');
-
-    const systemPrompt = `You are an AI assistant that analyzes voice memos and provides structured insights. Your goal is to extract actionable information and provide valuable analysis.
-
-${knowledgeContext ? `Here is the user's project knowledge for context: ${knowledgeContext}` : ''}
-
-Please analyze the following voice memo and provide a structured JSON response with these sections:
-1. summary - A concise summary of the main points
-2. keyInsights - Array of important insights or realizations  
-3. actionItems - Array of specific tasks or next steps mentioned
-4. topics - Array of main topics or themes discussed
-5. mood - Overall emotional tone (positive, neutral, negative, mixed)
-6. urgency - How urgent this seems (low, medium, high)
-7. crossReferences - Connections to other topics, projects, or knowledge areas
-
-Format your response as valid JSON.`;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: transcription }
-      ],
-      temperature: 0.7,
-      max_tokens: 1000,
-    });
-
-    const analysisText = completion.choices[0]?.message?.content;
-    
-    if (!analysisText) {
-      throw new Error('No analysis generated');
-    }
-
-    // Parse the JSON response
-    const analysis = JSON.parse(analysisText);
-    
-    return { analysis };
-  } catch (error) {
-    console.error('Analysis error:', error);
-    return { error: error as Error };
-  }
-}
 
 // Helper functions from the API route
 function getFilePathFromUrl(url: string): string {

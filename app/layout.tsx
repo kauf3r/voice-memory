@@ -4,6 +4,7 @@ import './globals.css'
 import { AuthProvider } from './components/AuthProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ProcessingStatsProvider } from '@/lib/contexts/ProcessingStatsContext'
+import AuthDebugInfo from './components/AuthDebugInfo'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -63,6 +64,7 @@ export default function RootLayout({
           <AuthProvider>
             <ProcessingStatsProvider>
               {children}
+              <AuthDebugInfo />
             </ProcessingStatsProvider>
           </AuthProvider>
         </ErrorBoundary>

@@ -28,14 +28,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         console.log('Initializing auth...')
         
-        // Add timeout to prevent infinite loading
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Auth timeout')), 10000) // 10 second timeout
-        })
-        
-        const authPromise = supabase.auth.getSession()
-        
-        const { data: { session }, error } = await Promise.race([authPromise, timeoutPromise]) as any
+        // First, try to get session from Supabase
+        const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
           console.warn('Auth session error:', error)
@@ -46,6 +40,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(session.user)
         } else {
           console.log('No user session found')
+          
+          // If no session, try to refresh from storage
+          console.log('Attempting to refresh session...')
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+          
+          if (refreshError) {
+            console.log('Session refresh failed:', refreshError.message)
+          } else if (refreshData?.session?.user) {
+            console.log('Session refreshed successfully:', refreshData.session.user.id)
+            setUser(refreshData.session.user)
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error)

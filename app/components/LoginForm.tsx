@@ -19,9 +19,13 @@ export default function LoginForm() {
       const urlParams = new URLSearchParams(window.location.search)
       const urlError = urlParams.get('error')
       if (urlError) {
-        setError(decodeURIComponent(urlError))
-        // Clear the error from URL
-        window.history.replaceState({}, '', window.location.pathname)
+        const errorMessage = decodeURIComponent(urlError)
+        console.log('Auth callback error:', errorMessage)
+        setError(errorMessage)
+        // Clear the error from URL after a short delay to ensure it's visible
+        setTimeout(() => {
+          window.history.replaceState({}, '', window.location.pathname)
+        }, 100)
       }
     }
   }, [])
@@ -80,7 +84,7 @@ export default function LoginForm() {
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1">
               Email address
             </label>
             <input
@@ -91,8 +95,8 @@ export default function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your email"
+              className="mt-1 block w-full px-3 py-2 border-2 border-gray-300 rounded-md shadow-sm bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+              placeholder="Enter your email address"
             />
           </div>
 
