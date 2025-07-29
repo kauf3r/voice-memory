@@ -91,7 +91,7 @@ export function CircuitBreakerStatus() {
     )
   }
 
-  const circuitBreakerStatus = stats?.global_metrics?.circuit_breaker_status
+  const circuitBreakerStatus = stats?.global_metrics?.circuitBreakerStatus
   const statusInfo = getStatusInfo(circuitBreakerStatus)
 
   return (

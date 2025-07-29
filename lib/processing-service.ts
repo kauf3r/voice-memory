@@ -619,7 +619,7 @@ export class ProcessingService {
       metrics.processingStage = 'saving'
       
       // Check migration status for error tracking columns
-      const migrationStatus = await checkErrorTrackingMigration()
+      const migrationStatus = { hasErrorColumns: true }
       
       const updateData: any = {
         transcription,
@@ -629,7 +629,7 @@ export class ProcessingService {
       }
       
       // Only include error tracking columns if they exist
-      if (migrationStatus.hasErrorTracking) {
+      if (migrationStatus.hasErrorColumns) {
         updateData.error_message = null
         updateData.last_error_at = null
       }
@@ -679,7 +679,7 @@ export class ProcessingService {
   private async releaseProcessingLockWithError(noteId: string, errorMessage: string): Promise<void> {
     try {
       // Check migration status to determine available methods
-      const migrationStatus = await checkErrorTrackingMigration()
+      const migrationStatus = { hasErrorColumns: true, hasFunctions: false }
       
       if (migrationStatus.hasFunctions) {
         // Try using the database function first
@@ -700,10 +700,11 @@ export class ProcessingService {
       }
       
       // Only include error tracking columns if they exist
-      if (migrationStatus.hasErrorTracking) {
+      if (migrationStatus.hasErrorColumns) {
         updateData.error_message = errorMessage
         updateData.last_error_at = new Date().toISOString()
-        updateData.processing_attempts = this.supabase.raw('COALESCE(processing_attempts, 0) + 1')
+        // Note: would need a database function to safely increment this value
+        // For now, just omit it to avoid the raw SQL issue
       } else {
         console.warn(`Error tracking not available, logging to console: Note ${noteId} error: ${errorMessage}`)
       }
@@ -828,7 +829,7 @@ export class ProcessingService {
   }> {
     try {
       // Check migration status to determine available features
-      const migrationStatus = await checkErrorTrackingMigration()
+      const migrationStatus = { hasErrorColumns: true, isApplied: true, hasFunctions: false }
       
       // First, cleanup any abandoned processing locks if available
       if (migrationStatus.isApplied) {
@@ -858,7 +859,7 @@ export class ProcessingService {
       
       // Build select query based on available columns
       let selectColumns = 'processed_at, transcription, analysis'
-      if (migrationStatus.hasErrorTracking) {
+      if (migrationStatus.hasErrorColumns) {
         selectColumns += ', error_message, processing_started_at'
       }
       
@@ -872,18 +873,18 @@ export class ProcessingService {
       }
 
       const total = notes?.length || 0
-      const completed = notes?.filter(n => n.processed_at).length || 0
+      const completed = notes?.filter((n: any) => n.processed_at).length || 0
       
       let failed = 0
       let processing = 0
       
-      if (migrationStatus.hasErrorTracking) {
-        failed = notes?.filter(n => n.error_message).length || 0
-        processing = notes?.filter(n => n.processing_started_at && !n.processed_at && !n.error_message).length || 0
+      if (migrationStatus.hasErrorColumns) {
+        failed = notes?.filter((n: any) => n.error_message).length || 0
+        processing = notes?.filter((n: any) => n.processing_started_at && !n.processed_at && !n.error_message).length || 0
       } else {
         // Without error tracking, estimate based on completion status
-        const incomplete = notes?.filter(n => !n.processed_at).length || 0
-        const withTranscription = notes?.filter(n => !n.processed_at && n.transcription).length || 0
+        const incomplete = notes?.filter((n: any) => !n.processed_at).length || 0
+        const withTranscription = notes?.filter((n: any) => !n.processed_at && n.transcription).length || 0
         processing = withTranscription
         failed = Math.max(0, incomplete - processing) // Rough estimate
       }

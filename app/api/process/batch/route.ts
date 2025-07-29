@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
   const batchId = `batch_${startTime}_${Math.random().toString(36).substr(2, 9)}`
   let timeoutId: NodeJS.Timeout | null = null
   let gracefulShutdownInitiated = false
+  let authMethod = 'unknown' // Default value
   
   try {
     // Authenticate the request
@@ -106,7 +107,8 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const { userId, authMethod } = auth
+    const { userId, authMethod: detectedAuthMethod } = auth
+    authMethod = detectedAuthMethod
     console.log(`Authenticated as ${authMethod} request for batch processing (userId: ${userId})`)
 
     // Enhanced concurrency protection (especially important for cron requests)

@@ -72,7 +72,7 @@ export function ErrorBreakdownChart() {
     )
   }
 
-  const errorBreakdown = stats?.global_metrics?.error_breakdown || {}
+  const errorBreakdown = stats?.global_metrics?.errorCategoryBreakdown || {}
   const totalErrors = Object.values(errorBreakdown).reduce((sum, count) => sum + count, 0)
 
   if (totalErrors === 0) {
