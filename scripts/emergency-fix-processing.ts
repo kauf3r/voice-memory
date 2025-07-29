@@ -97,7 +97,7 @@ class EmergencyFixProcessor {
         return
       }
 
-      const existingColumns = columns?.map(c => c.column_name) || []
+      const existingColumns = columns?.map((c: any) => c.column_name) || []
       const requiredColumns = ['error_message', 'processing_attempts', 'last_error_at']
       const missingColumns = requiredColumns.filter(col => !existingColumns.includes(col))
 

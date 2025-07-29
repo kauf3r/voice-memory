@@ -168,16 +168,7 @@ async function diagnoseStuckNotes() {
     console.log('🔍 Checking for processing errors in metadata:\n');
     
     // Skip error checking since notes table doesn't have metadata field
-    const notesWithErrors = null;
-
-    if (notesWithErrors && notesWithErrors.length > 0) {
-      console.log(`Found ${notesWithErrors.length} notes with errors in metadata:`);
-      notesWithErrors.forEach(note => {
-        console.log(`  - ${note.id.substring(0, 8)}... - ${note.metadata?.error}`);
-      });
-    } else {
-      console.log('No notes found with errors in metadata.');
-    }
+    console.log('No notes found with errors in metadata (metadata field not available).');
 
     // 6. Recommendations
     console.log('\n💡 Recommendations:\n');
