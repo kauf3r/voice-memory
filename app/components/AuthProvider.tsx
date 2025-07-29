@@ -23,22 +23,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Enhanced session restoration
+    // Enhanced session restoration with timeout
     const initializeAuth = async () => {
       try {
-        // Get initial session
-        const { data: { session }, error } = await supabase.auth.getSession()
+        console.log('Initializing auth...')
+        
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Auth timeout')), 10000) // 10 second timeout
+        })
+        
+        const authPromise = supabase.auth.getSession()
+        
+        const { data: { session }, error } = await Promise.race([authPromise, timeoutPromise]) as any
         
         if (error) {
           console.warn('Auth session error:', error)
         }
         
         if (session?.user) {
+          console.log('User session found:', session.user.id)
           setUser(session.user)
+        } else {
+          console.log('No user session found')
         }
       } catch (error) {
         console.error('Auth initialization error:', error)
+        // Still set loading to false even on error
       } finally {
+        console.log('Auth initialization complete')
         setLoading(false)
       }
     }
