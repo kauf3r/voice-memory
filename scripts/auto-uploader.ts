@@ -13,10 +13,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as chokidar from 'chokidar'
 import { createReadStream } from 'fs'
-import * as dotenv from 'dotenv'
-
 // Load environment variables
-dotenv.config()
+import 'dotenv/config'
 
 // Configuration
 const WATCH_DIR = path.join(process.cwd(), 'audio-exports')
