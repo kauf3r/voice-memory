@@ -1,45 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
 
 // Force dynamic behavior to handle cookies and searchParams
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
+  console.log('🔍 Export API - GET request started')
+  
   try {
     const searchParams = request.nextUrl.searchParams
     const format = searchParams.get('format') as 'json' | 'csv' | 'pdf'
     
     if (!format || !['json', 'csv', 'pdf'].includes(format)) {
+      console.log('❌ Export API - Invalid format:', format)
       return NextResponse.json(
         { error: 'Invalid format. Must be json, csv, or pdf' },
         { status: 400 }
       )
     }
 
-    const supabase = createServerClient()
+    console.log('📄 Export API - Format requested:', format)
+
+    // Get user from Authorization header (matching knowledge API pattern)
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    console.log('📋 Export API - Auth header present:', !!authHeader)
     
-    // Get the current user
-    const authHeader = request.headers.get('Authorization')
-    let user = null
-    
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token)
-      if (!authError) user = authUser
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ Export API - Missing or invalid Authorization header')
+      return NextResponse.json(
+        { error: 'Authorization header required' },
+        { status: 401 }
+      )
     }
     
-    if (!user) {
-      const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
-      if (!cookieError) user = cookieUser
-    }
+    const token = authHeader.replace('Bearer ', '')
+    console.log('🎟️ Export API - Token received (first 20 chars):', token.substring(0, 20) + '...')
     
-    if (!user) {
+    // Create client with the provided token (same pattern as knowledge API)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
+    console.log('🔐 Export API - Attempting to validate token with Supabase...')
+    const { data, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !data?.user) {
+      console.error('❌ Export API - Authentication failed:', authError)
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
+    
+    const user = data.user
+    console.log('✅ Export API - User authenticated:', user.id)
 
     // Get aggregated knowledge data (reuse logic from knowledge/route.ts)
     const { data: notes, error: notesError } = await supabase
@@ -63,12 +86,16 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
       .single()
 
+    console.log(`📊 Export API - Found ${notes?.length || 0} notes for aggregation`)
+    
     const aggregatedData = aggregateKnowledgeFromNotes(notes || [])
     const knowledgeData = {
       ...aggregatedData,
       projectKnowledge: projectKnowledge?.content || {},
       lastUpdated: projectKnowledge?.updated_at || new Date().toISOString(),
     }
+    
+    console.log(`📤 Export API - Aggregated data includes ${aggregatedData.content.allTasks.length} tasks`)
 
     // Generate export based on format
     switch (format) {
@@ -137,6 +164,16 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
     topTopics: {} as Record<string, number>,
     keyContacts: {} as Record<string, number>,
     commonTasks: {} as Record<string, number>,
+    allTasks: [] as Array<{
+      id: string,
+      description: string,
+      type: 'myTasks' | 'delegatedTasks',
+      date: string,
+      noteId: string,
+      noteContext?: string,
+      nextSteps?: string,
+      assignedTo?: string
+    }>,
     sentimentTrends: [] as Array<{date: string, sentiment: string}>,
     knowledgeTimeline: [] as Array<{
       date: string,
@@ -158,13 +195,43 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
 
     if (analysis.tasks?.myTasks) {
       stats.totalTasks += analysis.tasks.myTasks.length
-      analysis.tasks.myTasks.forEach((task: string) => {
-        aggregatedContent.commonTasks[task] = (aggregatedContent.commonTasks[task] || 0) + 1
+      analysis.tasks.myTasks.forEach((task: string | object, index: number) => {
+        // Handle both string and object tasks
+        const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
+        const taskDetails = typeof task === 'object' ? task as any : null
+        
+        aggregatedContent.commonTasks[taskDescription] = (aggregatedContent.commonTasks[taskDescription] || 0) + 1
+        aggregatedContent.allTasks.push({
+          id: `${note.id}-my-${index}`,
+          description: taskDescription,
+          type: 'myTasks',
+          date: note.recorded_at,
+          noteId: note.id,
+          noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
+          nextSteps: taskDetails?.nextSteps,
+          assignedTo: taskDetails?.assignedTo
+        })
       })
     }
 
     if (analysis.tasks?.delegatedTasks) {
       stats.totalTasks += analysis.tasks.delegatedTasks.length
+      analysis.tasks.delegatedTasks.forEach((task: string | object, index: number) => {
+        // Handle both string and object tasks
+        const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
+        const taskDetails = typeof task === 'object' ? task as any : null
+        
+        aggregatedContent.allTasks.push({
+          id: `${note.id}-delegated-${index}`,
+          description: taskDescription,
+          type: 'delegatedTasks',
+          date: note.recorded_at,
+          noteId: note.id,
+          noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
+          nextSteps: taskDetails?.nextSteps,
+          assignedTo: taskDetails?.assignedTo
+        })
+      })
     }
 
     if (analysis.messagesToDraft) {
@@ -227,6 +294,9 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
     .slice(-50)
     .reverse()
 
+  aggregatedContent.allTasks = aggregatedContent.allTasks
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
   aggregatedContent.knowledgeTimeline = aggregatedContent.knowledgeTimeline
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 20)
@@ -285,6 +355,21 @@ function generateCSV(data: any): string {
     })
   lines.push('')
   
+  // All Tasks
+  lines.push('ALL TASKS')
+  lines.push('Type,Description,Date,Note Context,Assigned To,Next Steps')
+  data.content.allTasks.forEach((task: any) => {
+    const taskType = task.type === 'myTasks' ? 'My Task' : 'Delegated'
+    const date = new Date(task.date).toLocaleDateString()
+    const description = task.description.replace(/"/g, '""')
+    const context = (task.noteContext || '').replace(/"/g, '""')
+    const assignedTo = (task.assignedTo || '').replace(/"/g, '""')
+    const nextSteps = (task.nextSteps || '').replace(/"/g, '""')
+    
+    lines.push(`"${taskType}","${description}","${date}","${context}","${assignedTo}","${nextSteps}"`)
+  })
+  lines.push('')
+
   // Recent Insights
   lines.push('RECENT INSIGHTS')
   lines.push('Insight')
@@ -402,6 +487,29 @@ function generateHTML(data: any): string {
                 <div class="contact-item">
                     <span>${contact}</span>
                     <span><strong>${count}</strong> mentions</span>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>✅ All Tasks (${data.content.allTasks.length})</h2>
+        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+            ${data.content.allTasks.map((task: any) => `
+                <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 6px; border-left: 3px solid ${task.type === 'myTasks' ? '#8b5cf6' : '#3b82f6'};">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <div style="font-weight: bold; color: #1e293b;">
+                            ${task.type === 'myTasks' ? '✅ My Task' : '👥 Delegated'}: ${task.description}
+                        </div>
+                        <div style="font-size: 12px; color: #64748b;">
+                            ${new Date(task.date).toLocaleDateString()}
+                        </div>
+                    </div>
+                    ${task.assignedTo ? `<div style="margin: 5px 0; font-size: 14px;"><strong>👤 Assigned to:</strong> ${task.assignedTo}</div>` : ''}
+                    ${task.nextSteps ? `<div style="margin: 5px 0; font-size: 14px;"><strong>Next Steps:</strong> ${task.nextSteps}</div>` : ''}
+                    <div style="margin-top: 8px; padding: 8px; background: #f1f5f9; border-radius: 4px; font-size: 13px; color: #475569; font-style: italic;">
+                        <strong>Context:</strong> "${task.noteContext}"
+                    </div>
                 </div>
             `).join('')}
         </div>
