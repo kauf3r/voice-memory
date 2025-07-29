@@ -39,11 +39,11 @@ export function useProcessingStats(options: UseProcessingStatsOptions = {}): Use
     return () => {
       context.unsubscribe(scope)
     }
-  }, [scope, enabled, refreshInterval, context])
+  }, [scope, enabled, refreshInterval, context.subscribe, context.unsubscribe])
 
   const refresh = useCallback(async () => {
     await context.refresh(scope)
-  }, [context, scope])
+  }, [context.refresh, scope])
 
   return {
     data: context.data[scope],

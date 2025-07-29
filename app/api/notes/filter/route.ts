@@ -1,75 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
 
 // Force dynamic behavior to handle cookies and searchParams
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
+  console.log('🔍 Filter API - GET request started')
+  
   try {
-    const supabase = createServerClient()
-    
-    // Try to get user from Authorization header first
-    let user = null
-    let authError = null
-    
+    // Get user from Authorization header (matching knowledge API pattern)
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    console.log('Filter API - Auth header present:', !!authHeader)
+    console.log('📋 Filter API - Auth header present:', !!authHeader)
     
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      console.log('Filter API - Token length:', token.length)
-      
-      try {
-        const { data, error } = await supabase.auth.getUser(token)
-        
-        if (error) {
-          console.log('Filter API - Auth header error:', error.message)
-          authError = error
-        } else {
-          user = data?.user
-          console.log('Filter API - Auth header success, user:', user?.id)
-        }
-      } catch (e) {
-        console.log('Filter API - Auth header exception:', e)
-        authError = e
-      }
-    } else {
-      console.log('Filter API - No valid auth header found')
-    }
-    
-    // If no auth header or it failed, try to get from cookies
-    if (!user) {
-      console.log('Filter API - Trying cookie authentication')
-      try {
-        const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
-        if (cookieError) {
-          console.log('Filter API - Cookie auth error:', cookieError.message)
-          authError = cookieError
-        } else {
-          console.log('Filter API - Cookie auth success, user:', cookieUser?.id)
-          user = cookieUser
-        }
-      } catch (e) {
-        console.log('Filter API - Cookie auth exception:', e)
-        authError = e
-      }
-    }
-    
-    if (authError || !user) {
-      console.log('Final auth failure:', { authError, hasUser: !!user })
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ Filter API - Missing or invalid Authorization header')
       return NextResponse.json(
-        { error: 'Unauthorized', details: (authError as any)?.message || 'No user found' },
+        { error: 'Authorization header required' },
         { status: 401 }
       )
     }
+    
+    const token = authHeader.replace('Bearer ', '')
+    console.log('🎟️ Filter API - Token received (first 20 chars):', token.substring(0, 20) + '...')
+    
+    // Create client with the provided token (same pattern as knowledge API)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
+    console.log('🔐 Filter API - Attempting to validate token with Supabase...')
+    const { data, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !data?.user) {
+      console.error('❌ Filter API - Authentication failed:', authError)
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+    
+    const user = data.user
+    console.log('✅ Filter API - User authenticated:', user.id)
 
     // Get filter parameters
     const { searchParams } = new URL(request.url)
     const filterType = searchParams.get('type')
     const filterValue = searchParams.get('value')
 
+    console.log('🔍 Filter parameters:', { filterType, filterValue })
+
     if (!filterType || !filterValue) {
+      console.log('❌ Missing filter parameters')
       return NextResponse.json(
         { error: 'Missing filter parameters' },
         { status: 400 }
@@ -107,9 +97,15 @@ export async function GET(request: NextRequest) {
 
       case 'date':
         // Filter by recording date (assuming filterValue is a date string)
+        console.log('📅 Date filter - input value:', filterValue)
         const startDate = new Date(filterValue)
         const endDate = new Date(startDate)
         endDate.setDate(endDate.getDate() + 1)
+        
+        console.log('📅 Date range:', {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        })
         
         query = query
           .gte('recorded_at', startDate.toISOString())
@@ -133,15 +129,18 @@ export async function GET(request: NextRequest) {
         )
     }
 
+    console.log('📡 Executing database query...')
     const { data: notes, error: notesError } = await query
 
     if (notesError) {
-      console.error('Failed to fetch filtered notes:', notesError)
+      console.error('❌ Failed to fetch filtered notes:', notesError)
       return NextResponse.json(
         { error: 'Failed to fetch notes' },
         { status: 500 }
       )
     }
+    
+    console.log(`📊 Database query returned ${notes?.length || 0} notes`)
 
     // For topic filtering, we need to do additional client-side filtering
     // since PostgreSQL JSON queries can be complex
@@ -189,6 +188,8 @@ export async function GET(request: NextRequest) {
         return hasPerson || hasOutreach || hasMessage
       }) || []
     }
+
+    console.log(`📤 Filter API - Returning ${filteredNotes.length} filtered notes`)
 
     return NextResponse.json({
       success: true,

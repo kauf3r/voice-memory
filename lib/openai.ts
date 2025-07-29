@@ -3,9 +3,20 @@ import { validateAnalysis, type ValidatedAnalysis } from './validation'
 import { buildAnalysisPrompt } from './analysis'
 import { createServiceClient } from './supabase-server'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization to ensure environment variables are loaded
+let openai: OpenAI | null = null
+
+function getOpenAIClient(): OpenAI {
+  if (!openai) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is not set')
+    }
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return openai
+}
 
 // Configurable model names with environment variable fallbacks
 const OPENAI_MODELS = {
@@ -28,7 +39,7 @@ const RATE_LIMIT = {
 // Enhanced rate limiter with Supabase persistence option
 class RateLimiter {
   private requests: Map<string, number[]> = new Map()
-  private supabase = createServiceClient()
+  private supabase: any = null
   private useDatabase: boolean
   private tableChecked: boolean = false
   private tableExists: boolean = false
@@ -37,6 +48,13 @@ class RateLimiter {
   
   constructor(useDatabase: boolean = false) {
     this.useDatabase = useDatabase
+  }
+  
+  private getSupabase() {
+    if (!this.supabase) {
+      this.supabase = createServiceClient()
+    }
+    return this.supabase
   }
   
   /**
@@ -52,7 +70,7 @@ class RateLimiter {
     
     try {
       // Try a simple select to test table existence and accessibility
-      const { error } = await this.supabase
+      const { error } = await this.getSupabase()
         .from('rate_limits')
         .select('service')
         .limit(1)
@@ -101,7 +119,7 @@ class RateLimiter {
       }
       
       // Get current rate limit data
-      const { data, error } = await this.supabase
+      const { data, error } = await this.getSupabase()
         .from('rate_limits')
         .select('requests')
         .eq('service', service)
@@ -155,7 +173,7 @@ class RateLimiter {
       
       while (retryCount < maxRetries) {
         try {
-          const { error: upsertError } = await this.supabase
+          const { error: upsertError } = await this.getSupabase()
             .from('rate_limits')
             .upsert({
               service,
@@ -284,7 +302,7 @@ export async function transcribeAudio(file: File): Promise<{ text: string | null
 
     console.log('Starting transcription for file:', file.name, 'Size:', file.size, 'Model:', OPENAI_MODELS.whisper)
 
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getOpenAIClient().audio.transcriptions.create({
       file: file,
       model: OPENAI_MODELS.whisper,
       response_format: 'text',
@@ -335,7 +353,7 @@ export async function analyzeTranscription(
 
     const prompt = buildAnalysisPrompt(transcription, projectKnowledge, recordingDate)
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAIClient().chat.completions.create({
       model: OPENAI_MODELS.gpt,
       messages: [
         {

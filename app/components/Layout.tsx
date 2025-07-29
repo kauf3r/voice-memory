@@ -24,9 +24,20 @@ export function GridContainer({ children, className = '' }: { children: React.Re
   )
 }
 
-export function GridItem({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+export function GridItem({ 
+  children, 
+  className = '', 
+  onClick 
+}: { 
+  children: React.ReactNode; 
+  className?: string;
+  onClick?: () => void;
+}) {
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
+    <div 
+      className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}
+      onClick={onClick}
+    >
       {children}
     </div>
   )

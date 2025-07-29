@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase-server'
 
 // Force dynamic behavior to handle cookies and searchParams
@@ -6,42 +7,50 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
+  console.log('🔍 Knowledge API - GET request started')
+  
   try {
-    const supabase = createServerClient()
-    
-    // Try to get user from Authorization header first
-    let user = null
-    let authError = null
-    
+    // Get user from Authorization header
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (error) {
-        authError = error
-      } else {
-        user = data?.user
-        // No need to set session for API routes - getUser() is sufficient
-      }
+    console.log('📋 Auth header present:', !!authHeader)
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ Missing or invalid Authorization header')
+      return NextResponse.json(
+        { error: 'Authorization header required' },
+        { status: 401 }
+      )
     }
     
-    // If no auth header or it failed, try to get from cookies
-    if (!user) {
-      const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
-      if (cookieError) {
-        authError = cookieError
-      } else {
-        user = cookieUser
-      }
-    }
+    const token = authHeader.replace('Bearer ', '')
+    console.log('🎟️ Token received (first 20 chars):', token.substring(0, 20) + '...')
     
-    if (authError || !user) {
+    // Create client with the provided token
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
+    console.log('🔐 Attempting to validate token with Supabase...')
+    const { data, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !data?.user) {
+      console.error('❌ Authentication failed:', authError)
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
+    
+    const user = data.user
+    console.log('✅ User authenticated:', user.id)
 
     // Get aggregated knowledge from all processed notes
     const { data: notes, error: notesError } = await supabase
@@ -52,12 +61,14 @@ export async function GET(request: NextRequest) {
       .order('recorded_at', { ascending: false })
 
     if (notesError) {
-      console.error('Failed to fetch notes:', notesError)
+      console.error('❌ Failed to fetch notes:', notesError)
       return NextResponse.json(
         { error: 'Failed to fetch knowledge data' },
         { status: 500 }
       )
     }
+    
+    console.log(`📊 Found ${notes?.length || 0} notes with analysis for user ${user.id}`)
 
     // Get project knowledge record
     const { data: projectKnowledge, error: knowledgeError } = await supabase
@@ -75,6 +86,7 @@ export async function GET(request: NextRequest) {
     try {
       // Handle empty notes case
       if (!notes || notes.length === 0) {
+        console.log('📭 No notes found, returning empty knowledge base')
         aggregatedData = {
           stats: {
             totalNotes: 0,
@@ -96,10 +108,12 @@ export async function GET(request: NextRequest) {
           generatedAt: new Date().toISOString()
         }
       } else {
+        console.log('🔄 Starting knowledge aggregation from notes')
         aggregatedData = aggregateKnowledgeFromNotes(notes)
+        console.log('✅ Knowledge aggregation complete')
       }
     } catch (aggregateError) {
-      console.error('Error aggregating knowledge data:', aggregateError)
+      console.error('❌ Error aggregating knowledge data:', aggregateError)
       // Return a safe default structure
       aggregatedData = {
         stats: {
@@ -123,14 +137,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const response = {
       success: true,
       knowledge: {
         ...aggregatedData,
         projectKnowledge: projectKnowledge?.content || {},
         lastUpdated: projectKnowledge?.updated_at || new Date().toISOString(),
       }
+    }
+    
+    console.log('📤 Returning knowledge response with stats:', {
+      totalNotes: aggregatedData.stats.totalNotes,
+      totalInsights: aggregatedData.stats.totalInsights,
+      totalTasks: aggregatedData.stats.totalTasks
     })
+    
+    return NextResponse.json(response)
 
   } catch (error) {
     console.error('Knowledge API error:', error)
@@ -152,23 +174,36 @@ export async function PUT(request: NextRequest) {
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
+      
+      // Use a new client with the token for authentication
+      const tokenClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      )
+      
+      const { data, error } = await tokenClient.auth.getUser()
       
       if (error) {
         authError = error
       } else {
         user = data?.user
-        // No need to set session for API routes - getUser() is sufficient
       }
     }
     
     // If no auth header or it failed, try to get from cookies
     if (!user) {
-      const { data: { user: cookieUser }, error: cookieError } = await supabase.auth.getUser()
+      const { data, error: cookieError } = await supabase.auth.getUser()
       if (cookieError) {
         authError = cookieError
       } else {
-        user = cookieUser
+        user = data?.user
       }
     }
     
@@ -245,6 +280,14 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
     topTopics: {} as Record<string, number>,
     keyContacts: {} as Record<string, number>,
     commonTasks: {} as Record<string, number>,
+    allTasks: [] as Array<{
+      id: string,
+      description: string,
+      type: 'myTasks' | 'delegatedTasks',
+      date: string,
+      noteId: string,
+      noteContext?: string
+    }>,
     sentimentTrends: [] as Array<{date: string, sentiment: string}>,
     knowledgeTimeline: [] as Array<{
       date: string,
@@ -267,13 +310,43 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
 
       if (analysis.tasks?.myTasks) {
         stats.totalTasks += analysis.tasks.myTasks.length
-        analysis.tasks.myTasks.forEach((task: string) => {
-          aggregatedContent.commonTasks[task] = (aggregatedContent.commonTasks[task] || 0) + 1
+        analysis.tasks.myTasks.forEach((task: string | object, index: number) => {
+          // Handle both string and object tasks
+          const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
+          const taskDetails = typeof task === 'object' ? task as any : null
+          
+          aggregatedContent.commonTasks[taskDescription] = (aggregatedContent.commonTasks[taskDescription] || 0) + 1
+          aggregatedContent.allTasks.push({
+            id: `${note.id}-my-${index}`,
+            description: taskDescription,
+            type: 'myTasks',
+            date: note.recorded_at,
+            noteId: note.id,
+            noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
+            nextSteps: taskDetails?.nextSteps,
+            assignedTo: taskDetails?.assignedTo
+          })
         })
       }
 
       if (analysis.tasks?.delegatedTasks) {
         stats.totalTasks += analysis.tasks.delegatedTasks.length
+        analysis.tasks.delegatedTasks.forEach((task: string | object, index: number) => {
+          // Handle both string and object tasks
+          const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
+          const taskDetails = typeof task === 'object' ? task as any : null
+          
+          aggregatedContent.allTasks.push({
+            id: `${note.id}-delegated-${index}`,
+            description: taskDescription,
+            type: 'delegatedTasks',
+            date: note.recorded_at,
+            noteId: note.id,
+            noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
+            nextSteps: taskDetails?.nextSteps,
+            assignedTo: taskDetails?.assignedTo
+          })
+        })
       }
 
       if (analysis.messagesToDraft) {
@@ -360,6 +433,9 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
   aggregatedContent.recentInsights = aggregatedContent.recentInsights
     .slice(-50) // Keep last 50 insights
     .reverse()
+
+  aggregatedContent.allTasks = aggregatedContent.allTasks
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   aggregatedContent.knowledgeTimeline = aggregatedContent.knowledgeTimeline
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())

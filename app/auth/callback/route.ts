@@ -35,15 +35,45 @@ export async function GET(request: Request) {
       
       if (exchangeError) {
         console.error('Failed to exchange code for session:', exchangeError)
-        return NextResponse.redirect(new URL('/?error=' + encodeURIComponent('Authentication failed'), request.url))
+        return NextResponse.redirect(new URL('/?error=' + encodeURIComponent('Authentication failed: ' + exchangeError.message), request.url))
       }
       
       if (data?.session) {
         console.log('Session created successfully for user:', data.session.user.id)
+        console.log('Session expires at:', data.session.expires_at)
+        
+        // Create response with redirect
+        const response = NextResponse.redirect(new URL('/', request.url))
+        
+        // Set session cookies to ensure client-side detection
+        const { access_token, refresh_token, expires_at } = data.session
+        
+        // Set cookies that match the Supabase client configuration
+        const cookieOptions = {
+          path: '/',
+          maxAge: 60 * 60 * 24 * 7, // 7 days
+          httpOnly: false, // Allow client-side access
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax' as const
+        }
+        
+        const storageKey = `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'default'}-auth-token`
+        
+        response.cookies.set(storageKey, JSON.stringify({
+          access_token,
+          refresh_token,
+          expires_at,
+          user: data.session.user
+        }), cookieOptions)
+        
+        return response
+      } else {
+        console.warn('Code exchange succeeded but no session returned')
+        return NextResponse.redirect(new URL('/?error=' + encodeURIComponent('No session created'), request.url))
       }
     } catch (error) {
       console.error('Exception during code exchange:', error)
-      return NextResponse.redirect(new URL('/?error=' + encodeURIComponent('Authentication error'), request.url))
+      return NextResponse.redirect(new URL('/?error=' + encodeURIComponent('Authentication error: ' + (error as Error).message), request.url))
     }
   }
 
