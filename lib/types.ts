@@ -32,6 +32,32 @@ export interface ProcessingError {
   created_at: string
 }
 
+export interface TaskCompletion {
+  id: string
+  user_id: string
+  task_id: string
+  note_id: string
+  completed_at: string
+  completed_by?: string
+  notes?: string
+  created_at: string
+}
+
+export interface VoiceMemoryTask {
+  id: string
+  description: string
+  type: 'myTasks' | 'delegatedTasks'
+  date: string
+  noteId: string
+  noteContext?: string
+  nextSteps?: string
+  assignedTo?: string
+  completed: boolean
+  completedAt?: string
+  completedBy?: string
+  completionNotes?: string
+}
+
 export interface ProcessingResult {
   success: boolean
   error?: string

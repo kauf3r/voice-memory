@@ -8,8 +8,10 @@ import LoginForm from '../components/LoginForm'
 import ErrorMessage from '../components/ErrorMessage'
 import SearchBar from '../components/SearchBar'
 import ExportButton from '../components/ExportButton'
+import TrelloExportButton from '../components/TrelloExportButton'
 import FilteredNotes from '../components/FilteredNotes'
 import { supabase } from '@/lib/supabase'
+import { VoiceMemoryTask } from '@/lib/types'
 
 interface KnowledgeStats {
   totalNotes: number
@@ -17,6 +19,8 @@ interface KnowledgeStats {
   totalTasks: number
   totalMessages: number
   totalOutreach: number
+  completedTasks: number
+  taskCompletionRate: number
   sentimentDistribution: {
     positive: number
     neutral: number
@@ -33,16 +37,7 @@ interface KnowledgeContent {
   topTopics: Record<string, number>
   keyContacts: Record<string, number>
   commonTasks: Record<string, number>
-  allTasks: Array<{
-    id: string
-    description: string
-    type: 'myTasks' | 'delegatedTasks'
-    date: string
-    noteId: string
-    noteContext?: string
-    nextSteps?: string
-    assignedTo?: string
-  }>
+  allTasks: VoiceMemoryTask[]
   sentimentTrends: Array<{date: string, sentiment: string}>
   knowledgeTimeline: Array<{
     date: string
@@ -70,7 +65,8 @@ export default function KnowledgePage() {
     type: 'topic' | 'contact' | 'sentiment' | 'date'
     value: string
   } | null>(null)
-  const [taskFilter, setTaskFilter] = useState<'all' | 'myTasks' | 'delegatedTasks'>('all')
+  const [taskFilter, setTaskFilter] = useState<'all' | 'myTasks' | 'delegatedTasks' | 'completed'>('all')
+  const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set())
 
   const fetchKnowledge = async () => {
     if (!user) return
@@ -158,6 +154,81 @@ export default function KnowledgePage() {
     } catch (err) {
       console.error('Export failed:', err)
       alert('Export failed. Please try again.')
+    }
+  }
+
+  const handleTaskCompletion = async (task: VoiceMemoryTask, completed: boolean) => {
+    if (!user) return
+
+    // Add task to loading state
+    setLoadingTasks(prev => new Set(prev).add(task.id))
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        throw new Error('Authentication required. Please log in again.')
+      }
+
+      const url = `/api/tasks/${task.id}/complete`
+      const method = completed ? 'POST' : 'DELETE'
+      
+      console.log(`${completed ? '✅' : '❌'} ${completed ? 'Completing' : 'Uncompleting'} task:`, task.description)
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        ...(completed && {
+          body: JSON.stringify({
+            completedBy: user.email || 'User',
+            notes: null
+          })
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `Failed to ${completed ? 'complete' : 'uncomplete'} task`)
+      }
+
+      console.log(`✅ Task ${completed ? 'completed' : 'uncompleted'} successfully`)
+
+      // Optimistically update the task in local state
+      if (knowledge?.content?.allTasks) {
+        const updatedTasks = knowledge.content.allTasks.map(t => 
+          t.id === task.id 
+            ? { 
+                ...t, 
+                completed,
+                completedAt: completed ? new Date().toISOString() : undefined,
+                completedBy: completed ? (user.email || 'User') : undefined,
+                completionNotes: undefined
+              }
+            : t
+        )
+        
+        setKnowledge(prev => prev ? {
+          ...prev,
+          content: {
+            ...prev.content,
+            allTasks: updatedTasks
+          }
+        } : null)
+      }
+
+    } catch (err) {
+      console.error(`❌ Failed to ${completed ? 'complete' : 'uncomplete'} task:`, err)
+      alert(`Failed to ${completed ? 'complete' : 'uncomplete'} task. Please try again.`)
+    } finally {
+      // Remove task from loading state
+      setLoadingTasks(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(task.id)
+        return newSet
+      })
     }
   }
 
@@ -267,7 +338,12 @@ export default function KnowledgePage() {
         </GridItem>
         <GridItem className="p-4 text-center cursor-pointer hover:shadow-md transition-shadow" onClick={() => setActiveTab('tasks')}>
           <div className="text-2xl font-bold text-purple-600">{knowledge?.stats?.totalTasks || 0}</div>
-          <div className="text-sm text-gray-500">Tasks</div>
+          <div className="text-sm text-gray-500">Total Tasks</div>
+          {knowledge?.stats?.taskCompletionRate !== undefined && (
+            <div className="text-xs text-green-600 mt-1">
+              {knowledge.stats.completedTasks} completed ({knowledge.stats.taskCompletionRate}%)
+            </div>
+          )}
         </GridItem>
         <GridItem className="p-4 text-center cursor-pointer hover:shadow-md transition-shadow">
           <div className="text-2xl font-bold text-orange-600">{knowledge?.stats?.totalMessages || 0}</div>
@@ -428,12 +504,17 @@ export default function KnowledgePage() {
 
   const renderTasks = () => {
     const tasks = knowledge.content?.allTasks || []
-    const filteredTasks = tasks.filter(task => 
-      taskFilter === 'all' || task.type === taskFilter
-    )
+    const filteredTasks = tasks.filter(task => {
+      if (taskFilter === 'all') return true
+      if (taskFilter === 'completed') return task.completed
+      if (taskFilter === 'myTasks') return task.type === 'myTasks' && !task.completed
+      if (taskFilter === 'delegatedTasks') return task.type === 'delegatedTasks' && !task.completed
+      return task.type === taskFilter
+    })
 
-    const myTasksCount = tasks.filter(t => t.type === 'myTasks').length
-    const delegatedTasksCount = tasks.filter(t => t.type === 'delegatedTasks').length
+    const myTasksCount = tasks.filter(t => t.type === 'myTasks' && !t.completed).length
+    const delegatedTasksCount = tasks.filter(t => t.type === 'delegatedTasks' && !t.completed).length
+    const completedTasksCount = tasks.filter(t => t.completed).length
 
     return (
       <div className="space-y-6">
@@ -470,6 +551,16 @@ export default function KnowledgePage() {
             >
               Delegated ({delegatedTasksCount})
             </button>
+            <button
+              onClick={() => setTaskFilter('completed')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                taskFilter === 'completed'
+                  ? 'bg-white text-green-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Completed ({completedTasksCount})
+            </button>
           </div>
           <div className="text-sm text-gray-500">
             Showing {filteredTasks.length} of {tasks.length} tasks
@@ -480,48 +571,85 @@ export default function KnowledgePage() {
         <div className="space-y-3">
           {filteredTasks.length > 0 ? (
             filteredTasks.map((task) => (
-              <div key={task.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div key={task.id} className={`bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow ${
+                task.completed ? 'opacity-75 bg-gray-50' : ''
+              }`}>
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-purple-500">
-                        {task.type === 'myTasks' ? '✅' : '👥'}
-                      </span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        task.type === 'myTasks'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {task.type === 'myTasks' ? 'My Task' : 'Delegated'}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {formatDate(task.date)}
-                      </span>
+                  <div className="flex items-start gap-3 flex-1">
+                    {/* Completion Checkbox */}
+                    <div className="pt-1">
+                      <input
+                        type="checkbox"
+                        checked={task.completed}
+                        onChange={(e) => handleTaskCompletion(task, e.target.checked)}
+                        disabled={loadingTasks.has(task.id)}
+                        className="w-5 h-5 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2 disabled:opacity-50"
+                      />
                     </div>
-                    <p className="text-gray-900 font-medium mb-2">{task.description}</p>
                     
-                    {/* Additional task details for delegated tasks */}
-                    {task.assignedTo && (
-                      <div className="mb-2">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          👤 Assigned to: {task.assignedTo}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={task.completed ? 'text-green-500' : 'text-purple-500'}>
+                          {task.completed ? '✅' : (task.type === 'myTasks' ? '📋' : '👥')}
                         </span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          task.completed
+                            ? 'bg-green-100 text-green-700'
+                            : task.type === 'myTasks'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {task.completed ? 'Completed' : task.type === 'myTasks' ? 'My Task' : 'Delegated'}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {formatDate(task.date)}
+                        </span>
+                        {task.completed && task.completedAt && (
+                          <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                            ✓ {formatDate(task.completedAt)}
+                          </span>
+                        )}
                       </div>
-                    )}
+                      <p className={`font-medium mb-2 ${
+                        task.completed ? 'text-gray-600 line-through' : 'text-gray-900'
+                      }`}>
+                        {task.description}
+                      </p>
                     
-                    {task.nextSteps && (
-                      <div className="mb-2">
-                        <div className="text-xs text-gray-500 mb-1">Next Steps:</div>
-                        <p className="text-sm text-gray-700">{task.nextSteps}</p>
-                      </div>
-                    )}
-                    
-                    {task.noteContext && (
-                      <div className="bg-gray-50 rounded p-3">
-                        <div className="text-xs text-gray-500 mb-1">Context from note:</div>
-                        <p className="text-sm text-gray-600 italic">"{task.noteContext}"</p>
-                      </div>
-                    )}
+                      {/* Additional task details for delegated tasks */}
+                      {task.assignedTo && (
+                        <div className="mb-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            👤 Assigned to: {task.assignedTo}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {task.nextSteps && (
+                        <div className="mb-2">
+                          <div className="text-xs text-gray-500 mb-1">Next Steps:</div>
+                          <p className={`text-sm ${task.completed ? 'text-gray-600' : 'text-gray-700'}`}>
+                            {task.nextSteps}
+                          </p>
+                        </div>
+                      )}
+                      
+                      {task.completed && task.completedBy && (
+                        <div className="mb-2">
+                          <div className="text-xs text-green-600 mb-1">Completed by:</div>
+                          <p className="text-sm text-green-700 font-medium">{task.completedBy}</p>
+                        </div>
+                      )}
+                      
+                      {task.noteContext && (
+                        <div className={`rounded p-3 ${task.completed ? 'bg-gray-100' : 'bg-gray-50'}`}>
+                          <div className="text-xs text-gray-500 mb-1">Context from note:</div>
+                          <p className={`text-sm italic ${task.completed ? 'text-gray-500' : 'text-gray-600'}`}>
+                            "{task.noteContext}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={() => setFilter({ type: 'date', value: task.date.split('T')[0] })}
@@ -621,6 +749,10 @@ export default function KnowledgePage() {
                 </svg>
                 Add Note
               </a>
+              <TrelloExportButton 
+                tasksCount={knowledge?.stats?.totalTasks || 0}
+                disabled={loading}
+              />
               <ExportButton onExport={handleExport} />
             </div>
           </div>

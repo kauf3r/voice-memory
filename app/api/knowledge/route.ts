@@ -60,6 +60,28 @@ export async function GET(request: NextRequest) {
       .not('analysis', 'is', null)
       .order('recorded_at', { ascending: false })
 
+    // Get task completions for this user
+    const { data: completions, error: completionsError } = await supabase
+      .from('task_completions')
+      .select('task_id, completed_at, completed_by, notes')
+      .eq('user_id', user.id)
+
+    if (completionsError) {
+      console.warn('⚠️ Could not fetch task completions (table may not exist yet):', completionsError.message)
+    }
+
+    // Create a completion lookup map
+    const completionMap = new Map()
+    if (completions) {
+      completions.forEach(completion => {
+        completionMap.set(completion.task_id, {
+          completedAt: completion.completed_at,
+          completedBy: completion.completed_by,
+          completionNotes: completion.notes
+        })
+      })
+    }
+
     if (notesError) {
       console.error('❌ Failed to fetch notes:', notesError)
       return NextResponse.json(
@@ -109,7 +131,7 @@ export async function GET(request: NextRequest) {
         }
       } else {
         console.log('🔄 Starting knowledge aggregation from notes')
-        aggregatedData = aggregateKnowledgeFromNotes(notes)
+        aggregatedData = aggregateKnowledgeFromNotes(notes, completionMap)
         console.log('✅ Knowledge aggregation complete')
       }
     } catch (aggregateError) {
@@ -257,13 +279,15 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-function aggregateKnowledgeFromNotes(notes: any[]) {
+function aggregateKnowledgeFromNotes(notes: any[], completionMap: Map<string, any> = new Map()) {
   const stats = {
     totalNotes: notes.length,
     totalInsights: 0,
     totalTasks: 0,
     totalMessages: 0,
     totalOutreach: 0,
+    completedTasks: 0,
+    taskCompletionRate: 0,
     sentimentDistribution: {
       positive: 0,
       neutral: 0,
@@ -286,7 +310,13 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
       type: 'myTasks' | 'delegatedTasks',
       date: string,
       noteId: string,
-      noteContext?: string
+      noteContext?: string,
+      nextSteps?: string,
+      assignedTo?: string,
+      completed: boolean,
+      completedAt?: string,
+      completedBy?: string,
+      completionNotes?: string
     }>,
     sentimentTrends: [] as Array<{date: string, sentiment: string}>,
     knowledgeTimeline: [] as Array<{
@@ -316,15 +346,22 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
           const taskDetails = typeof task === 'object' ? task as any : null
           
           aggregatedContent.commonTasks[taskDescription] = (aggregatedContent.commonTasks[taskDescription] || 0) + 1
+          const taskId = `${note.id}-my-${index}`
+          const completion = completionMap.get(taskId)
+          
           aggregatedContent.allTasks.push({
-            id: `${note.id}-my-${index}`,
+            id: taskId,
             description: taskDescription,
             type: 'myTasks',
             date: note.recorded_at,
             noteId: note.id,
             noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
             nextSteps: taskDetails?.nextSteps,
-            assignedTo: taskDetails?.assignedTo
+            assignedTo: taskDetails?.assignedTo,
+            completed: !!completion,
+            completedAt: completion?.completedAt,
+            completedBy: completion?.completedBy,
+            completionNotes: completion?.completionNotes
           })
         })
       }
@@ -336,15 +373,22 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
           const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
           const taskDetails = typeof task === 'object' ? task as any : null
           
+          const taskId = `${note.id}-delegated-${index}`
+          const completion = completionMap.get(taskId)
+          
           aggregatedContent.allTasks.push({
-            id: `${note.id}-delegated-${index}`,
+            id: taskId,
             description: taskDescription,
             type: 'delegatedTasks',
             date: note.recorded_at,
             noteId: note.id,
             noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
             nextSteps: taskDetails?.nextSteps,
-            assignedTo: taskDetails?.assignedTo
+            assignedTo: taskDetails?.assignedTo,
+            completed: !!completion,
+            completedAt: completion?.completedAt,
+            completedBy: completion?.completedBy,
+            completionNotes: completion?.completionNotes
           })
         })
       }
@@ -444,6 +488,12 @@ function aggregateKnowledgeFromNotes(notes: any[]) {
   aggregatedContent.sentimentTrends = aggregatedContent.sentimentTrends
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 30) // Keep last 30 for trend analysis
+
+  // Calculate completion statistics
+  stats.completedTasks = aggregatedContent.allTasks.filter(task => task.completed).length
+  stats.taskCompletionRate = stats.totalTasks > 0 
+    ? Math.round((stats.completedTasks / stats.totalTasks) * 100)
+    : 0
 
   return {
     stats,
