@@ -27,7 +27,7 @@ async function createAdminAuthLink() {
       const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
         email: 'admin@voicememory.test',
         password: 'temp-password-123',
-        user_id: testUserId,
+        // user_id: testUserId, // Not supported in AdminUserAttributes
         email_confirm: true
       })
       

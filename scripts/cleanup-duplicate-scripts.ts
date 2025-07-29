@@ -158,91 +158,104 @@ const scriptAnalysis: ScriptInfo[] = [
     path: 'scripts/test-ui-e2e.ts',
     purpose: 'End-to-end UI testing',
     redundant: false,
-    keepReason: 'E2E testing is still valuable for UI validation'
+    keepReason: 'E2E testing is still valuable for UI validation',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'test-openai.ts',
     path: 'scripts/test-openai.ts',
     purpose: 'Test OpenAI integration',
     redundant: false,
-    keepReason: 'Useful for testing OpenAI API connectivity'
+    keepReason: 'Useful for testing OpenAI API connectivity',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'test-openai-connection.ts',
     path: 'scripts/test-openai-connection.ts',
     purpose: 'Test OpenAI connection',
     redundant: false,
-    keepReason: 'Useful for testing OpenAI API connectivity'
+    keepReason: 'Useful for testing OpenAI API connectivity',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'test-supabase.ts',
     path: 'scripts/test-supabase.ts',
     purpose: 'Test Supabase connection',
     redundant: false,
-    keepReason: 'Useful for testing database connectivity'
+    keepReason: 'Useful for testing database connectivity',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'check-database-schema.ts',
     path: 'scripts/check-database-schema.ts',
     purpose: 'Check database schema',
     redundant: false,
-    keepReason: 'Useful for schema validation and migrations'
+    keepReason: 'Useful for schema validation and migrations',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'check-db-schema.ts',
     path: 'scripts/check-db-schema.ts',
     purpose: 'Check database schema',
     redundant: false,
-    keepReason: 'Useful for schema validation and migrations'
+    keepReason: 'Useful for schema validation and migrations',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'simple-db-check.ts',
     path: 'scripts/simple-db-check.ts',
     purpose: 'Simple database check',
     redundant: false,
-    keepReason: 'Useful for quick database connectivity tests'
+    keepReason: 'Useful for quick database connectivity tests',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'quick-check.ts',
     path: 'scripts/quick-check.ts',
     purpose: 'Quick system check',
     redundant: false,
-    keepReason: 'Useful for system health checks'
+    keepReason: 'Useful for system health checks',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'auto-uploader.ts',
     path: 'scripts/auto-uploader.ts',
     purpose: 'Automated file uploader',
     redundant: false,
-    keepReason: 'Useful for testing and automation'
+    keepReason: 'Useful for testing and automation',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'direct-processing.ts',
     path: 'scripts/direct-processing.ts',
     purpose: 'Direct processing bypass',
     redundant: false,
-    keepReason: 'Useful for debugging and testing'
+    keepReason: 'Useful for debugging and testing',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'generate-auth-token.ts',
     path: 'scripts/generate-auth-token.ts',
     purpose: 'Generate authentication tokens',
     redundant: false,
-    keepReason: 'Useful for testing and development'
+    keepReason: 'Useful for testing and development',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'quick-auth-setup.ts',
     path: 'scripts/quick-auth-setup.ts',
     purpose: 'Quick authentication setup',
     redundant: false,
-    keepReason: 'Useful for development and testing'
+    keepReason: 'Useful for development and testing',
+    replacement: 'N/A - keeping script'
   },
   {
     name: 'fix-auth-setup.ts',
     path: 'scripts/fix-auth-setup.ts',
     purpose: 'Fix authentication setup',
     redundant: false,
-    keepReason: 'Useful for troubleshooting auth issues'
+    keepReason: 'Useful for troubleshooting auth issues',
+    replacement: 'N/A - keeping script'
   }
 ]
 
