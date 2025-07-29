@@ -344,7 +344,7 @@ class DeploymentStatusChecker {
         stuck: 0
       }
 
-      notes.forEach(note => {
+      notes.forEach((note: any) => {
         if (note.processed_at) {
           this.status.processingQueue.completed++
         } else if (note.error_message) {
@@ -511,7 +511,7 @@ async function main() {
     checker.displayReport()
     
     // Exit with appropriate code
-    const exitCode = checker.status.overall === 'unhealthy' ? 1 : 0
+    const exitCode = (checker as any).status.overall === 'unhealthy' ? 1 : 0
     process.exit(exitCode)
     
   } catch (error) {
