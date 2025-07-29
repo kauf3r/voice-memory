@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Note } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 
@@ -43,7 +43,7 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
-  const [offset, setOffset] = useState(0)
+  const offsetRef = useRef(0)
   const [errorFilter, setErrorFilter] = useState<boolean | null>(options.errorStatus || null)
 
   const { limit = 20, search, includeErrorFields = true } = options
@@ -59,7 +59,7 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
         throw new Error('Not authenticated - please log in')
       }
       
-      const currentOffset = resetOffset ? 0 : offset
+      const currentOffset = resetOffset ? 0 : offsetRef.current
       const params = new URLSearchParams({
         limit: limit.toString(),
         offset: currentOffset.toString(),
@@ -97,10 +97,10 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
       
       if (resetOffset) {
         setNotes(data.notes)
-        setOffset(data.notes.length)
+        offsetRef.current = data.notes.length
       } else {
         setNotes(prev => [...prev, ...data.notes])
-        setOffset(prev => prev + data.notes.length)
+        offsetRef.current += data.notes.length
       }
       
       setTotalCount(data.pagination.total)
@@ -113,11 +113,11 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     } finally {
       setLoading(false)
     }
-  }, [limit, search, offset, errorFilter, includeErrorFields])
+  }, [limit, search, errorFilter, includeErrorFields]) // Remove offset from dependencies to prevent infinite loops
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    setOffset(0)
+    offsetRef.current = 0
     await fetchNotes(true)
   }, [fetchNotes])
 
@@ -420,7 +420,7 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
 
   const filterByErrorStatus = useCallback((hasError: boolean | null) => {
     setErrorFilter(hasError)
-    setOffset(0)
+    offsetRef.current = 0
     setLoading(true)
   }, [])
 
@@ -475,41 +475,41 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     return errorBreakdown
   }, [notes])
 
-  // Enhanced real-time updates using Supabase subscriptions
-  useEffect(() => {
-    if (!notes.length) return
+  // Enhanced real-time updates using Supabase subscriptions (temporarily disabled)
+  // useEffect(() => {
+  //   if (!notes.length) return
 
-    const subscription = supabase
-      .channel('notes_changes')
-      .on('postgres_changes', 
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'notes',
-          filter: `id=in.(${notes.map(n => n.id).join(',')})`
-        }, 
-        (payload) => {
-          console.log('Real-time note update received:', payload.new)
-          setNotes(prev => prev.map(note => 
-            note.id === payload.new.id 
-              ? { ...note, ...payload.new }
-              : note
-          ))
-        }
-      )
-      .subscribe()
+  //   const subscription = supabase
+  //     .channel('notes_changes')
+  //     .on('postgres_changes', 
+  //       { 
+  //         event: 'UPDATE', 
+  //         schema: 'public', 
+  //         table: 'notes',
+  //         filter: `id=in.(${notes.map(n => n.id).join(',')})`
+  //       }, 
+  //       (payload) => {
+  //         console.log('Real-time note update received:', payload.new)
+  //         setNotes(prev => prev.map(note => 
+  //           note.id === payload.new.id 
+  //             ? { ...note, ...payload.new }
+  //             : note
+  //         ))
+  //       }
+  //     )
+  //     .subscribe()
 
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [notes.map(n => n.id).join(',')]) // Dependency on note IDs
+  //   return () => {
+  //     subscription.unsubscribe()
+  //   }
+  // }, [notes.map(n => n.id).join(',')]) // Dependency on note IDs
 
   // Initial load and when search or error filter changes
   useEffect(() => {
     setLoading(true)
-    setOffset(0)
+    offsetRef.current = 0
     fetchNotes(true)
-  }, [search, errorFilter]) // Include errorFilter in dependencies
+  }, [search, errorFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     notes,

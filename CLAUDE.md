@@ -180,7 +180,7 @@ interface NoteAnalysis {
 
 #### 6. **Automated Processing Infrastructure** 🔄
 - **Fully consolidated unified batch processing endpoint** (`/api/process/batch`) with complete dual authentication
-- **Implemented Vercel cron job** running every 5 minutes for continuous processing via single endpoint
+- **Implemented Vercel cron job** running daily (Hobby plan limitation) for automated processing via single endpoint
 - **Production-ready features** including timeout protection, concurrency control, circuit breaker integration, and comprehensive health metrics
 - **Single source of truth architecture** - old `/api/cron/process-batch` endpoint completely removed and functionality consolidated
 - **Comprehensive health check endpoints** for monitoring and debugging with enhanced error tracking
@@ -305,7 +305,7 @@ interface Note {
 - Automated cleanup tools for obsolete diagnostic scripts
 
 #### **Production Readiness** 🚀
-- Automated batch processing via Vercel cron jobs every 5 minutes
+- Automated batch processing via Vercel cron jobs daily (Hobby plan limitation)
 - Durable rate limiting across serverless function instances
 - Configurable processing parameters via environment variables
 - Enhanced error handling and recovery mechanisms

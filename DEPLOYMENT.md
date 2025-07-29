@@ -9,6 +9,15 @@ This guide covers deploying Voice Memory to Vercel with Supabase and OpenAI inte
 3. **Vercel Account** - [vercel.com](https://vercel.com)
 4. **GitHub Account** - Code repository
 
+## ⚠️ Plan Considerations
+
+**Processing Frequency by Vercel Plan:**
+- **Hobby (Free)**: Daily processing only (up to 24-hour delay)
+- **Pro ($20/month)**: 5-minute processing intervals
+- **Enterprise**: Custom frequency
+
+**Current app configuration is optimized for Hobby plan users.** Manual processing is always available through the UI for immediate needs.
+
 ## 1. Supabase Setup
 
 ### Create Project

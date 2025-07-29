@@ -9,11 +9,11 @@ import { createClient } from '@supabase/supabase-js'
 
 // Create standalone Supabase client for testing
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.log('⚠️  Missing Supabase environment variables')
-  console.log('   This test requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY')
+  console.log('   This test requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY')
   console.log('   The enhanced error handling will still work in production')
   process.exit(0)
 }

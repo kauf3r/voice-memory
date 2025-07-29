@@ -32,18 +32,14 @@ describe('UploadButton', () => {
   })
 
   test('validates file size', () => {
-    render(<UploadButton />)
+    const { container } = render(<UploadButton />)
     
-    // Create a large file
-    const largeFile = new File(['x'.repeat(30 * 1024 * 1024)], 'large.mp3', {
-      type: 'audio/mpeg'
-    })
-
-    const input = screen.getByRole('button').querySelector('input[type="file"]')
+    // Find the hidden file input
+    const input = container.querySelector('input[type="file"]')
     expect(input).toBeInTheDocument()
 
-    // Simulate file selection would trigger validation
-    // In a real test, you'd need to trigger the file selection event
+    // Test would validate file size on selection
+    // The actual validation happens in the component's validateFile function
   })
 
   test('validates file type', () => {
