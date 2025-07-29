@@ -14,10 +14,8 @@ import fs from 'fs'
 import path from 'path'
 import { FormData } from 'formdata-node'
 import { fileFromPath } from 'formdata-node/file-from-path'
-import dotenv from 'dotenv'
-
 // Load environment variables
-dotenv.config({ path: '.env.local' })
+import 'dotenv/config'
 
 interface TestResult {
   name: string

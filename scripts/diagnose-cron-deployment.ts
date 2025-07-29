@@ -160,10 +160,18 @@ async function generateDeploymentReport(baseUrl: string): Promise<DeploymentRepo
   console.log('=' .repeat(50));
   
   for (const scenario of authScenarios) {
+    // Filter out undefined values from headers
+    const headers: Record<string, string> = {}
+    for (const [key, value] of Object.entries(scenario.headers)) {
+      if (value !== undefined) {
+        headers[key] = value
+      }
+    }
+    
     const result = await testEndpoint(
       unifiedEndpoint,
       'POST',
-      scenario.headers,
+      headers,
       scenario.name
     );
     report.endpoints.old.push(result);
@@ -190,10 +198,18 @@ async function generateDeploymentReport(baseUrl: string): Promise<DeploymentRepo
   ];
   
   for (const scenario of additionalScenarios) {
+    // Filter out undefined values from headers
+    const headers: Record<string, string> = {}
+    for (const [key, value] of Object.entries(scenario.headers)) {
+      if (value !== undefined) {
+        headers[key] = value
+      }
+    }
+    
     const result = await testEndpoint(
       unifiedEndpoint,
       'POST',
-      scenario.headers,
+      headers,
       scenario.name
     );
     report.endpoints.new.push(result);
