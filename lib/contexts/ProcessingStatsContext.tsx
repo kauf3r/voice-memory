@@ -244,15 +244,15 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
   useEffect(() => {
     return () => {
       // Clear all intervals
-      for (const interval of intervals.current.values()) {
+      intervals.current.forEach((interval) => {
         clearInterval(interval)
-      }
+      })
       intervals.current.clear()
       
       // Cancel all pending requests
-      for (const controller of abortControllers.current.values()) {
+      abortControllers.current.forEach((controller) => {
         controller.abort()
-      }
+      })
       abortControllers.current.clear()
     }
   }, [])

@@ -125,9 +125,9 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
             <div className="flex items-center">
               <span className="mr-2">{getStatusIcon('failed')}</span>
               <span className="font-medium">Failed</span>
-              {stats.error_rate && (
+              {stats.errorRate && (
                 <span className="ml-1 text-xs opacity-75">
-                  ({stats.error_rate.toFixed(1)}% error rate)
+                  ({stats.errorRate.toFixed(1)}% error rate)
                 </span>
               )}
             </div>

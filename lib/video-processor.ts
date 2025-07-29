@@ -89,7 +89,7 @@ export async function checkVideoProcessingCapabilities(): Promise<{
     return {
       ffmpegAvailable: false,
       supportedFormats: [],
-      error: `Error checking video processing capabilities: ${error.message}`
+      error: `Error checking video processing capabilities: ${error instanceof Error ? error.message : 'Unknown error'}`
     }
   }
 }
@@ -178,7 +178,7 @@ export async function processVideoFile(
     console.error('Video processing error:', error)
     return {
       success: false,
-      error: `Video processing failed: ${error.message}`,
+      error: `Video processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       metadata: {
         originalFormat: filename.split('.').pop()?.toLowerCase() || 'unknown',
         hasAudio: false
@@ -218,5 +218,5 @@ export function getAudioExtractionSettings(videoFormat: string): {
     'mkv': { outputFormat: 'mp3' as const, bitrate: '128k', sampleRate: '44100' },
   }
   
-  return formatSettings[videoFormat] || { outputFormat: 'mp3', bitrate: '128k', sampleRate: '44100' }
+  return (formatSettings as any)[videoFormat] || { outputFormat: 'mp3', bitrate: '128k', sampleRate: '44100' }
 }

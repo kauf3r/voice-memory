@@ -120,25 +120,25 @@ export function ProcessingMetricsSummary() {
   }
 
   // Calculate trends and health indicators
-  const successRateTrend = getTrendIndicator(globalMetrics.success_rate, 90, 'success')
-  const processingTimeTrend = getTrendIndicator(globalMetrics.average_processing_time, 5000, 'error')
-  const circuitBreakerHealthy = !globalMetrics.circuit_breaker_status.isOpen
-  const currentlyProcessingCount = globalMetrics.currently_processing || 0
+  const successRateTrend = getTrendIndicator(globalMetrics.successRate, 90, 'success')
+  const processingTimeTrend = getTrendIndicator(globalMetrics.averageProcessingTime, 5000, 'error')
+  const circuitBreakerHealthy = !globalMetrics.circuitBreakerStatus.isOpen
+  const currentlyProcessingCount = globalMetrics.currentlyProcessing || 0
 
   // System health score
   let healthScore = 0
-  if (globalMetrics.success_rate >= 90) healthScore += 25
-  else if (globalMetrics.success_rate >= 75) healthScore += 15
-  else if (globalMetrics.success_rate >= 50) healthScore += 5
+  if (globalMetrics.successRate >= 90) healthScore += 25
+  else if (globalMetrics.successRate >= 75) healthScore += 15
+  else if (globalMetrics.successRate >= 50) healthScore += 5
 
-  if (globalMetrics.average_processing_time <= 5000) healthScore += 25
-  else if (globalMetrics.average_processing_time <= 10000) healthScore += 15
-  else if (globalMetrics.average_processing_time <= 20000) healthScore += 5
+  if (globalMetrics.averageProcessingTime <= 5000) healthScore += 25
+  else if (globalMetrics.averageProcessingTime <= 10000) healthScore += 15
+  else if (globalMetrics.averageProcessingTime <= 20000) healthScore += 5
 
   if (circuitBreakerHealthy) healthScore += 25
-  if (globalMetrics.currently_processing <= 5) healthScore += 25
-  else if (globalMetrics.currently_processing <= 10) healthScore += 15
-  else if (globalMetrics.currently_processing <= 20) healthScore += 5
+  if (globalMetrics.currentlyProcessing <= 5) healthScore += 25
+  else if (globalMetrics.currentlyProcessing <= 10) healthScore += 15
+  else if (globalMetrics.currentlyProcessing <= 20) healthScore += 5
 
   const healthColor = healthScore >= 85 ? 'text-green-600' : 
                      healthScore >= 65 ? 'text-yellow-600' : 'text-red-600'
@@ -158,22 +158,22 @@ export function ProcessingMetricsSummary() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Success Rate"
-          value={`${globalMetrics.success_rate.toFixed(1)}%`}
-          subtitle={`${globalMetrics.total_successful} of ${globalMetrics.total_processed} processed`}
+          value={`${globalMetrics.successRate.toFixed(1)}%`}
+          subtitle={`${globalMetrics.totalSuccessful} of ${globalMetrics.totalProcessed} processed`}
           icon="✅"
           trend={successRateTrend}
-          color={globalMetrics.success_rate >= 90 ? 'text-green-600' : 
-                 globalMetrics.success_rate >= 75 ? 'text-yellow-600' : 'text-red-600'}
+          color={globalMetrics.successRate >= 90 ? 'text-green-600' : 
+                 globalMetrics.successRate >= 75 ? 'text-yellow-600' : 'text-red-600'}
         />
 
         <MetricCard
           title="Avg Processing Time"
-          value={formatDuration(globalMetrics.average_processing_time)}
+          value={formatDuration(globalMetrics.averageProcessingTime)}
           subtitle="Per note processing time"
           icon="⏱️"
           trend={processingTimeTrend}
-          color={globalMetrics.average_processing_time <= 5000 ? 'text-green-600' : 
-                 globalMetrics.average_processing_time <= 10000 ? 'text-yellow-600' : 'text-red-600'}
+          color={globalMetrics.averageProcessingTime <= 5000 ? 'text-green-600' : 
+                 globalMetrics.averageProcessingTime <= 10000 ? 'text-yellow-600' : 'text-red-600'}
         />
 
         <MetricCard
@@ -198,7 +198,7 @@ export function ProcessingMetricsSummary() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <MetricCard
           title="Total Processed"
-          value={globalMetrics.total_processed.toLocaleString()}
+          value={globalMetrics.totalProcessed.toLocaleString()}
           subtitle="All time processing count"
           icon="📊"
         />
@@ -214,7 +214,7 @@ export function ProcessingMetricsSummary() {
         <MetricCard
           title="Circuit Breaker"
           value={circuitBreakerHealthy ? 'Healthy' : 'Open'}
-          subtitle={`${globalMetrics.circuit_breaker_status.failures} failures`}
+          subtitle={`${globalMetrics.circuitBreakerStatus.failures} failures`}
           icon={circuitBreakerHealthy ? '🟢' : '🚨'}
           color={circuitBreakerHealthy ? 'text-green-600' : 'text-red-600'}
         />
@@ -228,15 +228,15 @@ export function ProcessingMetricsSummary() {
           <div>
             <div className="flex justify-between text-sm mb-2">
               <span className="font-medium text-gray-700">Success Rate</span>
-              <span className="text-gray-900">{globalMetrics.success_rate.toFixed(1)}%</span>
+              <span className="text-gray-900">{globalMetrics.successRate.toFixed(1)}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div
                 className={`h-3 rounded-full transition-all duration-300 ${
-                  globalMetrics.success_rate >= 90 ? 'bg-green-500' :
-                  globalMetrics.success_rate >= 75 ? 'bg-yellow-500' : 'bg-red-500'
+                  globalMetrics.successRate >= 90 ? 'bg-green-500' :
+                  globalMetrics.successRate >= 75 ? 'bg-yellow-500' : 'bg-red-500'
                 }`}
-                style={{ width: `${Math.min(100, globalMetrics.success_rate)}%` }}
+                style={{ width: `${Math.min(100, globalMetrics.successRate)}%` }}
               ></div>
             </div>
             <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -251,19 +251,19 @@ export function ProcessingMetricsSummary() {
             <div className="flex justify-between text-sm mb-2">
               <span className="font-medium text-gray-700">Processing Efficiency</span>
               <span className="text-gray-900">
-                {globalMetrics.average_processing_time <= 5000 ? 'Excellent' :
-                 globalMetrics.average_processing_time <= 10000 ? 'Good' :
-                 globalMetrics.average_processing_time <= 20000 ? 'Fair' : 'Poor'}
+                {globalMetrics.averageProcessingTime <= 5000 ? 'Excellent' :
+                 globalMetrics.averageProcessingTime <= 10000 ? 'Good' :
+                 globalMetrics.averageProcessingTime <= 20000 ? 'Fair' : 'Poor'}
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div
                 className={`h-3 rounded-full transition-all duration-300 ${
-                  globalMetrics.average_processing_time <= 5000 ? 'bg-green-500' :
-                  globalMetrics.average_processing_time <= 10000 ? 'bg-yellow-500' : 'bg-red-500'
+                  globalMetrics.averageProcessingTime <= 5000 ? 'bg-green-500' :
+                  globalMetrics.averageProcessingTime <= 10000 ? 'bg-yellow-500' : 'bg-red-500'
                 }`}
                 style={{ 
-                  width: `${Math.max(10, Math.min(100, 100 - (globalMetrics.average_processing_time / 30000) * 100))}%` 
+                  width: `${Math.max(10, Math.min(100, 100 - (globalMetrics.averageProcessingTime / 30000) * 100))}%` 
                 }}
               ></div>
             </div>

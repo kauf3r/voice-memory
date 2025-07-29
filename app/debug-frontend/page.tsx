@@ -237,7 +237,7 @@ export default function DebugFrontend() {
               try {
                 const response = await fetch('/api/debug-env')
                 const data = await response.json()
-                setDiagnostics(prev => ({
+                setDiagnostics((prev: any) => ({
                   ...prev,
                   networkTest: {
                     success: response.ok,
@@ -246,7 +246,7 @@ export default function DebugFrontend() {
                   }
                 }))
               } catch (err) {
-                setDiagnostics(prev => ({
+                setDiagnostics((prev: any) => ({
                   ...prev,
                   networkTest: {
                     success: false,

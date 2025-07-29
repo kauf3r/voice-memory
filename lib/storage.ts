@@ -114,7 +114,7 @@ export function getMimeTypeFromUrl(url: string, magicBytes?: Uint8Array): string
     if (magicBytes[4] === 0x66 && magicBytes[5] === 0x74 && magicBytes[6] === 0x79 && magicBytes[7] === 0x70) {
       // Check ftyp brand to distinguish audio vs video MP4 containers
       const brandBytes = magicBytes.slice(8, 12)
-      const brand = String.fromCharCode(...brandBytes)
+      const brand = String.fromCharCode.apply(null, Array.from(brandBytes))
       
       // M4A audio container brands
       if (brand === 'M4A ' || brand === 'M4B ' || brand === 'mp41' || brand === 'mp42') {

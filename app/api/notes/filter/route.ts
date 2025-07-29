@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       console.log('Final auth failure:', { authError, hasUser: !!user })
       return NextResponse.json(
-        { error: 'Unauthorized', details: authError?.message || 'No user found' },
+        { error: 'Unauthorized', details: (authError as any)?.message || 'No user found' },
         { status: 401 }
       )
     }

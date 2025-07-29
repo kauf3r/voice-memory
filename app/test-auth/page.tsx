@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 export default function TestAuth() {
   const [status, setStatus] = useState('Checking authentication...')
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState<any>(null)
 
   useEffect(() => {
     checkAuth()
