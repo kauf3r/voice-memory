@@ -63,10 +63,10 @@ class ManualMigrationGuide {
   constructor() {
     // Validate environment variables
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
-
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
+  
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/SUPABASE_SERVICE_KEY')
+      throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY')
     }
 
     // Create Supabase client with service role permissions
@@ -482,7 +482,7 @@ WHERE routine_name IN ('log_processing_error', 'clear_processing_error', 'get_pr
     
     log(`${colors.yellow}Issue 1: Permission Denied${colors.reset}`)
     log('Solution: Make sure you\'re using a service role key, not an anon key')
-    log('Check that your SUPABASE_SERVICE_ROLE_KEY is correct\n')
+    log('Check that your SUPABASE_SERVICE_KEY is correct\n')
 
     log(`${colors.yellow}Issue 2: Relation Does Not Exist${colors.reset}`)
     log('Solution: The table hasn\'t been created yet')

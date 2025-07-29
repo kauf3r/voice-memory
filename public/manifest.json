@@ -13,60 +13,14 @@
   "icons": [
     {
       "src": "/favicon.ico",
-      "sizes": "any",
+      "sizes": "16x16",
       "type": "image/x-icon"
     },
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "maskable any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable any"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-mobile.png",
-      "sizes": "375x812",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshot-desktop.png",
-      "sizes": "1200x800",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Upload Voice Note",
-      "short_name": "Upload",
-      "description": "Upload a new voice recording",
-      "url": "/?action=upload",
-      "icons": [
-        {
-          "src": "/upload-icon.png",
-          "sizes": "96x96"
-        }
-      ]
-    },
-    {
-      "name": "View Notes",
-      "short_name": "Notes",
-      "description": "View all voice notes",
-      "url": "/?action=view",
-      "icons": [
-        {
-          "src": "/notes-icon.png",
-          "sizes": "96x96"
-        }
-      ]
     }
   ],
   "features": [

@@ -85,7 +85,7 @@ AND processed_at IS NULL;
 #### Step 3: Environment Variables
 Check these variables are set in Vercel:
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_KEY`
 - `OPENAI_API_KEY`
 - `CRON_SECRET`
 
@@ -146,7 +146,7 @@ AND processed_at IS NULL;
 2. Add missing variables:
    - `OPENAI_API_KEY`: Your OpenAI API key
    - `CRON_SECRET`: Secret for cron authentication
-   - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key
+   - `SUPABASE_SERVICE_KEY`: Supabase service role key
 3. Redeploy the application
 
 ### Issue: Cron Job Not Running

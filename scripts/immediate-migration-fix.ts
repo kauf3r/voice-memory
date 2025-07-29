@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env npx tsx
 
 /**
  * IMMEDIATE MIGRATION FIX SCRIPT
@@ -10,9 +10,10 @@
  * that the processing service expects to exist.
  */
 
-import { createClient } from '@supabase/supabase-js'
-import * as fs from 'fs'
-import * as path from 'path'
+import { MigrationExecutor, executeMigrationFileWithFallbacks } from '../lib/migration-utils'
+import { createServiceClient } from '../lib/supabase-server'
+import path from 'path'
+import fs from 'fs'
 
 // Color codes for console output
 const colors = {
@@ -48,35 +49,18 @@ function logWarning(message: string) {
 
 interface MigrationResult {
   success: boolean
-  error?: string
   executed: string[]
   skipped: string[]
+  error?: string
 }
 
 class ImmediateMigrationFix {
   private supabase: any
-  private migrationPath: string
-  private migrationSql: string
+  private migrationExecutor: MigrationExecutor
 
   constructor() {
-    // Validate environment variables
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/SUPABASE_SERVICE_KEY')
-    }
-
-    // Create Supabase client with service role permissions
-    this.supabase = createClient(supabaseUrl, supabaseServiceKey)
-    
-    // Load migration SQL
-    this.migrationPath = path.join(__dirname, '../supabase/migrations/20240119_add_error_tracking.sql')
-    if (!fs.existsSync(this.migrationPath)) {
-      throw new Error(`Migration file not found at: ${this.migrationPath}`)
-    }
-    
-    this.migrationSql = fs.readFileSync(this.migrationPath, 'utf8')
+    this.supabase = createServiceClient()
+    this.migrationExecutor = new MigrationExecutor(true)
   }
 
   async checkCurrentSchema(): Promise<{hasColumns: boolean, hasTables: boolean, hasFunctions: boolean}> {
@@ -145,161 +129,139 @@ class ImmediateMigrationFix {
   }
 
   async executeMigrationChunks(): Promise<MigrationResult> {
-    logStep(2, 'Executing migration in chunks...')
+    logStep(2, 'Executing migration in chunks with fallback support...')
     
-    const result: MigrationResult = {
-      success: true,
-      executed: [],
-      skipped: []
-    }
-
-    // Split migration into logical chunks
-    const chunks = this.splitMigrationIntoChunks()
+    const migrationPath = path.join(process.cwd(), 'supabase/migrations/20240119_add_error_tracking.sql')
     
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]
-      log(`\n${colors.cyan}Executing chunk ${i + 1}/${chunks.length}: ${chunk.description}${colors.reset}`)
+    try {
+      const result = await this.migrationExecutor.executeMigrationFile(migrationPath)
       
-      try {
-        // Execute each statement in the chunk
-        for (const statement of chunk.statements) {
-          if (statement.trim()) {
-            const { error } = await this.supabase.rpc('exec_sql', { sql: statement })
-            
-            if (error) {
-              // Check if it's a "already exists" error which we can ignore
-              if (error.message?.includes('already exists') || 
-                  error.message?.includes('column already exists') ||
-                  error.message?.includes('relation already exists')) {
-                logWarning(`Skipped (already exists): ${statement.substring(0, 50)}...`)
-                result.skipped.push(statement.substring(0, 100))
-              } else {
-                throw error
-              }
-            } else {
-              logSuccess(`Executed: ${statement.substring(0, 50)}...`)
-              result.executed.push(statement.substring(0, 100))
-            }
-          }
+      if (result.success) {
+        logSuccess(`Migration executed successfully using ${result.method}`)
+        return {
+          success: true,
+          executed: result.executed,
+          skipped: result.skipped
         }
-        
-        logSuccess(`Completed chunk: ${chunk.description}`)
-        
-      } catch (error) {
-        logError(`Failed chunk ${chunk.description}: ${error}`)
-        result.success = false
-        result.error = `Chunk "${chunk.description}" failed: ${error}`
-        
-        // Try to continue with remaining chunks
-        continue
+      } else if (result.method === 'manual') {
+        logWarning('Migration requires manual execution - instructions provided')
+        return {
+          success: false,
+          executed: result.executed,
+          skipped: result.skipped,
+          error: 'Manual execution required - see instructions above'
+        }
+      } else {
+        logError('Migration execution failed completely')
+        return {
+          success: false,
+          executed: result.executed,
+          skipped: result.skipped,
+          error: result.error || 'Unknown migration error'
+        }
+      }
+    } catch (error: any) {
+      logError(`Migration execution error: ${error.message}`)
+      return {
+        success: false,
+        executed: [],
+        skipped: [],
+        error: error.message
       }
     }
-
-    return result
   }
 
-  private splitMigrationIntoChunks() {
-    const chunks = [
-      {
-        description: 'Add error tracking columns to notes table',
-        statements: [
-          `ALTER TABLE notes ADD COLUMN IF NOT EXISTS error_message TEXT`,
-          `ALTER TABLE notes ADD COLUMN IF NOT EXISTS processing_attempts INTEGER DEFAULT 0`,
-          `ALTER TABLE notes ADD COLUMN IF NOT EXISTS last_error_at TIMESTAMP WITH TIME ZONE`
-        ]
-      },
-      {
-        description: 'Create processing_errors table',
-        statements: [
-          `CREATE TABLE IF NOT EXISTS processing_errors (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-            error_message TEXT NOT NULL,
-            error_type VARCHAR(100),
-            stack_trace TEXT,
-            processing_attempt INTEGER NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          )`
-        ]
-      },
-      {
-        description: 'Create rate_limits table',
-        statements: [
-          `CREATE TABLE IF NOT EXISTS rate_limits (
-            service VARCHAR(50) PRIMARY KEY,
-            requests BIGINT[] NOT NULL DEFAULT '{}',
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          )`
-        ]
-      },
-      {
-        description: 'Create indexes',
-        statements: [
-          `CREATE INDEX IF NOT EXISTS idx_notes_error_status ON notes(error_message) WHERE error_message IS NOT NULL`,
-          `CREATE INDEX IF NOT EXISTS idx_notes_processing_attempts ON notes(processing_attempts)`,
-          `CREATE INDEX IF NOT EXISTS idx_notes_last_error_at ON notes(last_error_at)`,
-          `CREATE INDEX IF NOT EXISTS idx_processing_errors_note_id ON processing_errors(note_id)`,
-          `CREATE INDEX IF NOT EXISTS idx_processing_errors_created_at ON processing_errors(created_at)`,
-          `CREATE INDEX IF NOT EXISTS idx_processing_errors_error_type ON processing_errors(error_type)`
-        ]
-      },
-      {
-        description: 'Enable RLS on tables',
-        statements: [
-          `ALTER TABLE notes ENABLE ROW LEVEL SECURITY`,
-          `ALTER TABLE processing_errors ENABLE ROW LEVEL SECURITY`,
-          `ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY`
-        ]
-      },
-      {
-        description: 'Create database functions',
-        statements: [
-          `CREATE OR REPLACE FUNCTION log_processing_error(
-            p_note_id UUID,
-            p_error_message TEXT,
-            p_error_type VARCHAR(100) DEFAULT NULL,
-            p_stack_trace TEXT DEFAULT NULL,
-            p_processing_attempt INTEGER DEFAULT NULL
-          ) RETURNS VOID AS $$
-          BEGIN
-            INSERT INTO processing_errors (
-              note_id, error_message, error_type, stack_trace, processing_attempt
-            ) VALUES (
-              p_note_id, p_error_message, p_error_type, p_stack_trace,
-              COALESCE(p_processing_attempt, (SELECT processing_attempts FROM notes WHERE id = p_note_id))
-            );
-            UPDATE notes SET 
-              error_message = p_error_message,
-              last_error_at = NOW(),
-              processing_attempts = COALESCE(processing_attempts, 0) + 1
-            WHERE id = p_note_id;
-          END;
-          $$ LANGUAGE plpgsql SECURITY DEFINER`,
-          
-          `CREATE OR REPLACE FUNCTION clear_processing_error(p_note_id UUID) RETURNS VOID AS $$
-          BEGIN
-            UPDATE notes SET error_message = NULL, last_error_at = NULL WHERE id = p_note_id;
-          END;
-          $$ LANGUAGE plpgsql SECURITY DEFINER`,
-          
-          `CREATE OR REPLACE FUNCTION get_processing_stats(p_user_id UUID)
-          RETURNS TABLE(total BIGINT, pending BIGINT, processing BIGINT, completed BIGINT, failed BIGINT) AS $$
-          BEGIN
-            RETURN QUERY
-            SELECT 
-              COUNT(*)::BIGINT as total,
-              COUNT(*) FILTER (WHERE processed_at IS NULL AND error_message IS NULL)::BIGINT as pending,
-              COUNT(*) FILTER (WHERE processed_at IS NULL AND transcription IS NOT NULL AND analysis IS NULL)::BIGINT as processing,
-              COUNT(*) FILTER (WHERE processed_at IS NOT NULL)::BIGINT as completed,
-              COUNT(*) FILTER (WHERE error_message IS NOT NULL)::BIGINT as failed
-            FROM notes WHERE user_id = p_user_id;
-          END;
-          $$ LANGUAGE plpgsql SECURITY DEFINER`
-        ]
-      }
-    ]
+  async applyAllMigrations(): Promise<void> {
+    console.log('🚀 Immediate Migration Fix with Comprehensive Fallbacks')
+    console.log('=====================================================')
+    
+    // Check exec_sql availability
+    const hasExecSql = await this.migrationExecutor.isExecSqlAvailable()
+    if (hasExecSql) {
+      console.log('✅ exec_sql RPC function is available')
+    } else {
+      console.log('⚠️  exec_sql RPC function not available - using fallback methods')
+    }
 
-    return chunks
+    // Get all migration files
+    const migrationDir = path.join(process.cwd(), 'supabase/migrations')
+    let migrationFiles: string[] = []
+    
+    try {
+      migrationFiles = fs.readdirSync(migrationDir)
+        .filter(file => file.endsWith('.sql'))
+        .sort()
+        .map(file => path.join(migrationDir, file))
+    } catch (error) {
+      console.error('❌ Error reading migration directory:', error)
+      return
+    }
+
+    if (migrationFiles.length === 0) {
+      console.log('📝 No migration files found')
+      return
+    }
+
+    console.log(`\n📋 Found ${migrationFiles.length} migration files`)
+    
+    let successCount = 0
+    let manualCount = 0
+    let failedCount = 0
+    const failedMigrations: string[] = []
+    const manualMigrations: string[] = []
+
+    for (const filePath of migrationFiles) {
+      console.log(`\n📄 Processing: ${path.basename(filePath)}`)
+      
+      try {
+        const result = await this.migrationExecutor.executeMigrationFile(filePath)
+        
+        if (result.success) {
+          console.log(`✅ Applied successfully using ${result.method}`)
+          successCount++
+        } else if (result.method === 'manual') {
+          console.log('📋 Requires manual execution')
+          manualCount++
+          manualMigrations.push(path.basename(filePath))
+        } else {
+          console.log('❌ Failed completely')
+          failedCount++
+          failedMigrations.push(path.basename(filePath))
+        }
+      } catch (error) {
+        console.error(`❌ Unexpected error: ${error}`)
+        failedCount++
+        failedMigrations.push(path.basename(filePath))
+      }
+    }
+
+    // Summary
+    console.log('\n📊 Migration Summary:')
+    console.log('====================')
+    console.log(`✅ Successfully applied: ${successCount}`)
+    console.log(`📋 Require manual execution: ${manualCount}`)
+    console.log(`❌ Failed: ${failedCount}`)
+
+    if (manualMigrations.length > 0) {
+      console.log('\n📋 Manual execution required for:')
+      manualMigrations.forEach(file => console.log(`   • ${file}`))
+      console.log('\nCheck the manual instructions provided above.')
+    }
+
+    if (failedMigrations.length > 0) {
+      console.log('\n❌ Completely failed migrations:')
+      failedMigrations.forEach(file => console.log(`   • ${file}`))
+    }
+
+    if (successCount === migrationFiles.length) {
+      console.log('\n🎉 All migrations applied successfully!')
+    } else if (manualCount > 0 && failedCount === 0) {
+      console.log('\n⚠️  Some migrations require manual execution.')
+      console.log('Complete the manual steps to finish the migration process.')
+    } else {
+      console.log('\n❌ Migration process had issues.')
+      console.log('Review the errors and manual instructions above.')
+    }
   }
 
   async verifyMigration(): Promise<boolean> {
@@ -392,7 +354,7 @@ class ImmediateMigrationFix {
             processing_started_at: null,
             error_message: null 
           })
-          .in('id', stuckNotes.map(n => n.id))
+          .in('id', stuckNotes.map((n: any) => n.id))
         
         if (resetError) {
           logError(`Failed to reset stuck notes: ${resetError.message}`)

@@ -5,6 +5,9 @@ import { POST } from '@/app/api/upload/route'
 jest.mock('@/lib/supabase-server')
 jest.mock('@/lib/storage')
 jest.mock('@/lib/quota-manager')
+jest.mock('@/lib/supabase', () => ({
+  supabase: {}
+}))
 
 const mockSupabase = {
   auth: {

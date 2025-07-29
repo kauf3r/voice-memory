@@ -45,7 +45,7 @@ class DeploymentVerifier {
   constructor() {
     this.supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.SUPABASE_SERVICE_KEY!
     )
     
     // Determine base URL for testing
@@ -239,7 +239,7 @@ class DeploymentVerifier {
 
     const requiredVars = [
       { name: 'NEXT_PUBLIC_SUPABASE_URL', critical: true },
-      { name: 'SUPABASE_SERVICE_ROLE_KEY', critical: true },
+      { name: 'SUPABASE_SERVICE_KEY', critical: true },
       { name: 'OPENAI_API_KEY', critical: true },
       { name: 'CRON_SECRET', critical: true }
     ]

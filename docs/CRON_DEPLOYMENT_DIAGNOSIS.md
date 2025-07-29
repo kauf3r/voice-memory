@@ -279,7 +279,7 @@ curl -X POST \
      "crons": [
        {
          "path": "/api/process/batch",
-         "schedule": "*/5 * * * *",
+         "schedule": "0 0 * * *",
          "method": "POST",
          "headers": {
            "Authorization": "Bearer ${CRON_SECRET}"

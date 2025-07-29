@@ -28,6 +28,28 @@ These variables have default values but can be customized:
 | `OPENAI_WHISPER_RATE_LIMIT` | Whisper API requests per minute | `50` | Match your OpenAI plan limits |
 | `OPENAI_GPT_RATE_LIMIT` | GPT API requests per minute | `200` | Match your OpenAI plan limits |
 
+## ⚠️ Vercel Plan Limitations
+
+### Cron Job Frequency
+
+The processing frequency depends on your Vercel plan:
+
+| Plan | Cron Jobs | Frequency | Processing Delay |
+|------|-----------|-----------|------------------|
+| **Hobby** | 2 total | **Once daily** | Up to 24 hours |
+| **Pro** | 40 total | **Any frequency** | 5 minutes or less |
+| **Enterprise** | 100 total | **Any frequency** | Custom |
+
+**Current Configuration:**
+- The app is configured with `"0 0 * * *"` (daily at midnight)
+- This is **required** for Hobby plan users
+- For better user experience, consider upgrading to Pro plan for 5-minute processing
+
+**Impact on User Experience:**
+- **Hobby:** Voice notes may wait up to 24 hours for processing
+- **Pro:** Voice notes processed within 5 minutes
+- Manual processing is always available via the UI for immediate needs
+
 ## 🚀 Deployment Steps
 
 ### 1. Verify Local Configuration

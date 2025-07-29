@@ -79,11 +79,11 @@ class DeploymentStatusChecker {
   constructor() {
     // Validate environment variables
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/SUPABASE_SERVICE_KEY')
-    }
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY')
+  }
 
     // Create Supabase client with service role permissions
     this.supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -109,9 +109,9 @@ class DeploymentStatusChecker {
       'OPENAI_API_KEY'
     ]
 
-    // Check for either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY
-    const hasServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
-    const serviceKeyVars = hasServiceKey ? [] : ['SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY']
+      // Check for SUPABASE_SERVICE_KEY
+  const hasServiceKey = process.env.SUPABASE_SERVICE_KEY
+  const serviceKeyVars = hasServiceKey ? [] : ['SUPABASE_SERVICE_KEY']
 
     const optionalVars = [
       'CRON_SECRET',
@@ -156,7 +156,7 @@ class DeploymentStatusChecker {
           status: 'unhealthy',
           details: 'Cannot connect to database',
           error: error.message,
-          quickFix: 'Check SUPABASE_SERVICE_ROLE_KEY and database status'
+          quickFix: 'Check SUPABASE_SERVICE_KEY and database status'
         }
       }
 
@@ -239,7 +239,7 @@ class DeploymentStatusChecker {
       const response = await fetch(`${this.baseUrl}/api/process/batch`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
           'X-Service-Auth': 'true'
         },
         timeout: 10000

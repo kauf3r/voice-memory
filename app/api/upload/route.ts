@@ -13,8 +13,6 @@ export async function POST(request: NextRequest) {
   try {
     // Get authorization header - try both lowercase and capitalized
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    console.log('Auth header:', authHeader ? 'Present' : 'Missing', authHeader?.substring(0, 20) + '...')
-    console.log('All headers:', Array.from(request.headers.keys()))
     
     const supabase = createServerClient()
     console.log('Supabase client created')
@@ -26,7 +24,6 @@ export async function POST(request: NextRequest) {
     // First try to get user from the Authorization header
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '')
-      console.log('Attempting to authenticate with token:', token.substring(0, 20) + '...')
       
       // Use getUser with the token directly instead of setSession
       const { data, error } = await supabase.auth.getUser(token)
@@ -36,7 +33,6 @@ export async function POST(request: NextRequest) {
         authError = error
       } else {
         user = data?.user
-        console.log('User authenticated via Bearer token:', user?.id)
         
         // Set the session for storage operations
         await supabase.auth.setSession({

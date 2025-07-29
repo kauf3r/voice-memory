@@ -38,6 +38,20 @@ Voice Memory is a web application that processes voice recordings through sophis
 - **Styling**: Tailwind CSS
 - **Hosting**: Vercel
 
+## 📋 Deployment Plans
+
+### Processing Frequency by Vercel Plan
+
+| Plan | Cost | Cron Jobs | Processing Frequency |
+|------|------|-----------|---------------------|
+| **Hobby** | Free | 2 total | **Daily** (up to 24hr delay) |
+| **Pro** | $20/month | 40 total | **Every 5 minutes** |
+| **Enterprise** | Custom | 100+ | **Custom frequency** |
+
+**Current Configuration**: Optimized for Hobby plan (daily processing)  
+**For Immediate Processing**: Use manual "Process Now" button in the UI  
+**For Frequent Processing**: Consider upgrading to Vercel Pro plan
+
 ## Prerequisites
 
 - Node.js 18+ 

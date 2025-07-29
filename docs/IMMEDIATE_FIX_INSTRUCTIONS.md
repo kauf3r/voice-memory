@@ -173,7 +173,7 @@ Test that processing now works:
 ### Common Issues:
 
 **1. "Permission denied" errors**
-- ✅ Verify `SUPABASE_SERVICE_ROLE_KEY` is set correctly
+- ✅ Verify `SUPABASE_SERVICE_KEY` is set correctly
 - ✅ Make sure you're using the service role key, not anon key
 
 **2. "Function already exists" errors**  
@@ -186,7 +186,7 @@ Test that processing now works:
 - ✅ Check that you have all required environment variables:
   ```bash
   echo $NEXT_PUBLIC_SUPABASE_URL
-  echo $SUPABASE_SERVICE_ROLE_KEY
+  echo $SUPABASE_SERVICE_KEY
   ```
 
 ### Get Help:

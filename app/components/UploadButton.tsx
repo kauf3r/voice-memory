@@ -8,7 +8,7 @@ import LoadingSpinner from './LoadingSpinner'
 import ErrorMessage from './ErrorMessage'
 
 interface UploadButtonProps {
-  onUploadComplete?: (url: string, file: File) => void
+  onUploadComplete?: () => void
   onUploadStart?: (file: File) => void
   className?: string
   multiple?: boolean
@@ -106,15 +106,11 @@ export default function UploadButton({
 
       // Get the current session for auth
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      console.log('Client session:', session ? 'Present' : 'Missing')
-      console.log('Session error:', sessionError)
       
       if (!session) {
-        console.error('No session found. Session error:', sessionError)
+        console.error('No session found')
         throw new Error('No active session. Please log in again.')
       }
-      
-      console.log('Sending auth header:', `Bearer ${session.access_token.substring(0, 20)}...`)
       
       // Create AbortController for timeout
       const controller = new AbortController()
@@ -188,7 +184,7 @@ export default function UploadButton({
       
       if (result.success && result.url) {
         console.log('Upload completed successfully, URL:', result.url)
-        onUploadComplete?.(result.url, file)
+        onUploadComplete?.()
         
         // Clean up progress after a delay
         setTimeout(() => {

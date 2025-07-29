@@ -68,11 +68,11 @@ class VerificationAndTestSuite {
   constructor() {
     // Validate environment variables
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/SUPABASE_SERVICE_KEY')
-    }
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY')
+  }
 
     // Create Supabase client with service role permissions
     this.supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -277,7 +277,7 @@ class VerificationAndTestSuite {
       const response = await fetch(`${this.baseUrl}/api/process/batch`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
           'X-Service-Auth': 'true'
         }
       })
@@ -314,7 +314,7 @@ class VerificationAndTestSuite {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
           'X-Service-Auth': 'true'
         },
         body: JSON.stringify({ batchSize: 1 })
@@ -617,7 +617,7 @@ class VerificationAndTestSuite {
       const response = await fetch(`${this.baseUrl}/api/process/batch`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
           'X-Service-Auth': 'true'
         }
       })
@@ -665,7 +665,7 @@ class VerificationAndTestSuite {
       const response = await fetch(`${this.baseUrl}/api/process/batch`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
           'X-Service-Auth': 'true'
         }
       })
