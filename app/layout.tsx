@@ -7,6 +7,7 @@ import { ToastProvider } from './components/ToastProvider'
 import AuthDebugInfo from './components/AuthDebugInfo'
 import BetaFeatures from './components/BetaFeatures'
 import { PerformanceMonitor } from '@/lib/performance/PerformanceMonitor'
+import PerformanceErrorBoundary from '@/lib/performance/PerformanceErrorBoundary'
 
 // Use system fonts instead of Google Fonts to avoid build issues
 const systemFonts = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
@@ -65,21 +66,26 @@ export default function RootLayout({
     <html lang="en">
       <body style={{ fontFamily: systemFonts }}>
         <ErrorBoundary>
-          <PerformanceMonitor 
-            debug={process.env.NODE_ENV === 'development'}
-            enableRUM={true}
-            sampleRate={process.env.NODE_ENV === 'production' ? 0.1 : 1.0}
-          >
-            <AuthProvider>
-              <ToastProvider>
-                <ProcessingStatsProvider>
-                  {children}
-                  <AuthDebugInfo />
-                  <BetaFeatures />
-                </ProcessingStatsProvider>
-              </ToastProvider>
-            </AuthProvider>
-          </PerformanceMonitor>
+          {/* Temporarily disable PerformanceMonitor to fix React Error #310 infinite loop */}
+          {/* TODO: Re-enable after fixing fetch interception circular dependency */}
+          {false && (
+            <PerformanceErrorBoundary>
+              <PerformanceMonitor 
+                debug={process.env.NODE_ENV === 'development'}
+                enableRUM={false}
+                sampleRate={0}
+              />
+            </PerformanceErrorBoundary>
+          )}
+          <AuthProvider>
+            <ToastProvider>
+              <ProcessingStatsProvider>
+                {children}
+                <AuthDebugInfo />
+                <BetaFeatures />
+              </ProcessingStatsProvider>
+            </ToastProvider>
+          </AuthProvider>
         </ErrorBoundary>
       </body>
     </html>

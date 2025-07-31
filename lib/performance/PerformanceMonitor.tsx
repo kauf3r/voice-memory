@@ -110,13 +110,30 @@ export function PerformanceMonitor({
   useEffect(() => {
     if (!enableRUM || !shouldMonitor.current) return
 
-    // Intercept fetch for API monitoring
+    // Intercept fetch for API monitoring with exclusions to prevent circular dependencies
     const originalFetch = window.fetch
     window.fetch = function(...args) {
       const [url, options] = args
+      const urlString = typeof url === 'string' ? url : url.toString()
+      
+      // CRITICAL: Exclude monitoring/performance endpoints to prevent infinite loops
+      const excludedEndpoints = [
+        '/api/monitoring',
+        '/api/performance', 
+        '/api/metrics',
+        '/api/error'
+      ]
+      
+      const shouldSkipMonitoring = excludedEndpoints.some(endpoint => urlString.includes(endpoint))
+      
+      if (shouldSkipMonitoring) {
+        // Skip monitoring for these endpoints to prevent circular dependencies
+        return originalFetch.apply(this, args)
+      }
+
       const startTime = performance.now()
       const method = options?.method || 'GET'
-      const requestId = `${method}-${url}-${startTime}`
+      const requestId = `${method}-${urlString}-${startTime}`
       
       apiCallTimers.current.set(requestId, startTime)
 
@@ -125,16 +142,17 @@ export function PerformanceMonitor({
         const duration = endTime - startTime
         
         const apiCall = {
-          url: typeof url === 'string' ? url : url.toString(),
+          url: urlString,
           method,
           duration: Math.round(duration),
           status: response.status,
           timestamp: Date.now()
         }
 
+        // Use functional update to prevent dependency on current state
         setPerformanceData(prev => ({
           ...prev,
-          apiCalls: [...prev.apiCalls.slice(-50), apiCall] // Keep last 50 API calls
+          apiCalls: [...prev.apiCalls.slice(-49), apiCall] // Keep last 50 API calls
         }))
 
         if (debug) {
@@ -148,7 +166,7 @@ export function PerformanceMonitor({
         const duration = endTime - startTime
         
         const apiCall = {
-          url: typeof url === 'string' ? url : url.toString(),
+          url: urlString,
           method,
           duration: Math.round(duration),
           status: 0,
@@ -157,7 +175,7 @@ export function PerformanceMonitor({
 
         setPerformanceData(prev => ({
           ...prev,
-          apiCalls: [...prev.apiCalls.slice(-50), apiCall]
+          apiCalls: [...prev.apiCalls.slice(-49), apiCall]
         }))
 
         if (debug) {
