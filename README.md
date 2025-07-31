@@ -8,12 +8,39 @@ Transform voice notes into actionable insights with sophisticated AI-powered ana
 
 **Current Version**: 1.0 Production Ready  
 **Built With**: Next.js 15.4.5 + TypeScript + Supabase + OpenAI  
-**Development Acceleration**: Claude Code + 5 Specialized Agents  
-**Status**: ✅ Live in Production | 🧪 Beta Testing Active
+**Development Acceleration**: Claude Code + Multi-Computer Workflow  
+**Status**: ✅ Live in Production | 🔧 Multi-Computer Development Ready
 
 ## Overview
 
-Voice Memory represents the cutting edge of AI-powered voice analysis, transforming spoken thoughts into structured, actionable insights. This production-ready application showcases modern full-stack development enhanced by AI tooling, making it both a powerful user tool and a demonstration of accelerated development practices.
+Voice Memory represents the cutting edge of AI-powered voice analysis, transforming spoken thoughts into structured, actionable insights. This production-ready application showcases modern full-stack development enhanced by AI tooling and multi-computer development workflows, making it both a powerful user tool and a demonstration of accelerated development practices.
+
+## 🔧 Multi-Computer Development Ready
+
+Voice Memory includes a **production-grade multi-computer development workflow** that prevents git corruption and enables seamless development across multiple machines:
+
+### Quick Start for Developers
+```bash
+# First time setup on any computer
+git clone https://github.com/kauf3r/voice-memory.git
+cd voice-memory
+npm run setup
+
+# Daily workflow
+npm run git:start    # Start work (pull latest)
+npm run git:save     # Save work (commit & push)
+npm run git:sync     # Sync changes
+npm run git:status   # Check status
+```
+
+### Key Features
+- **🛡️ Repository Health Monitoring**: Automatic corruption detection and recovery
+- **📦 Smart Stash Management**: Automatic stashing/unstashing of uncommitted changes
+- **⚡ Conflict Prevention**: Intelligent merge strategies and conflict resolution
+- **🔄 Seamless Synchronization**: One-command sync across multiple computers
+- **🚀 Developer Onboarding**: One-command setup for new development machines
+
+See [Multi-Computer Workflow Guide](docs/MULTI_COMPUTER_WORKFLOW.md) for detailed documentation.
 
 ## ✨ Advanced Features
 
@@ -140,19 +167,22 @@ Voice Memory showcases the power of AI-accelerated development through deep Clau
 
 ### Installation & Setup
 
-1. **Clone and Install**
+1. **Quick Setup (Recommended)**
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/kauf3r/voice-memory.git
    cd voice-memory
-   pnpm install  # or npm install
+   npm run setup  # One-command setup
    ```
 
-2. **Environment Configuration**
+2. **Manual Setup (Alternative)**
    ```bash
-   cp .env.example .env.local
+   git clone https://github.com/kauf3r/voice-memory.git
+   cd voice-memory
+   npm install
    ```
-   
-   Configure your `.env.local` with:
+
+3. **Environment Configuration**
+   The setup script creates `.env` from `.env.example`. Configure with your keys:
    ```env
    # Supabase Configuration
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
@@ -167,49 +197,42 @@ Voice Memory showcases the power of AI-accelerated development through deep Clau
    NEXTAUTH_URL=http://localhost:3000
    ```
 
-3. **Database Setup**
+4. **Launch Development Server**
    ```bash
-   # Run migrations to set up the database schema
-   npm run setup:db
-   
-   # Or manually apply migrations from supabase/migrations/
-   ```
-
-4. **Optional: Claude Code Integration**
-   ```bash
-   # Copy Claude agents for enhanced development
-   mkdir -p .claude/agents
-   cp temp-claude-agents/agents/*.md .claude/agents/
-   ```
-
-5. **Launch Development Server**
-   ```bash
-   pnpm dev
+   npm run dev
    ```
    
    Visit [http://localhost:3000](http://localhost:3000) to start using Voice Memory!
 
 ### Development Commands
 
+#### Multi-Computer Git Workflow
 ```bash
-# Core development
-pnpm dev              # Start development server with hot reload
-pnpm build            # Build for production
-pnpm start            # Start production server
+npm run git:start    # Start work (pull latest, stash management)
+npm run git:save     # Save work (commit & push with safety checks)
+npm run git:sync     # Sync changes (merge remote, handle conflicts)
+npm run git:status   # Check git status and repository health
+npm run git:clean    # Clean working directory (with confirmation)
+```
 
-# Code quality
-pnpm lint             # ESLint code checking
-pnpm format           # Prettier code formatting
-pnpm typecheck        # TypeScript validation
+#### Core Development
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
+npm run typecheck    # TypeScript type checking
+npm run test         # Run Jest tests
+npm run test:e2e     # Run Playwright E2E tests
+```
 
-# Testing suite
-pnpm test             # Run unit tests
-pnpm test:e2e         # End-to-end testing with Playwright
-pnpm test:watch       # Test in watch mode
-
-# Database & Services
-pnpm test:supabase    # Test Supabase connection
-pnpm test:openai      # Test OpenAI integration
+#### Project Management
+```bash
+npm run setup        # Complete development environment setup
+npm run precommit    # Run all quality checks (format, lint, typecheck)
+npm run diagnose-stuck    # Diagnose stuck processing notes
+npm run test:supabase     # Test Supabase connection
+npm run test:openai      # Test OpenAI API connection
 ```
 
 ## Project Structure

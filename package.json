@@ -1,6 +1,14 @@
 {
   "name": "voice-memory",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "AI-powered voice analysis platform with multi-computer development workflow",
+  "author": "Andy Kaufman",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kauf3r/voice-memory.git"
+  },
+  "keywords": ["voice", "ai", "transcription", "analysis", "nextjs", "supabase", "openai"],
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -34,6 +42,25 @@
     "git:status": "./scripts/git-workflow.sh status",
     "git:clean": "./scripts/git-workflow.sh clean",
     "setup": "./scripts/setup-dev.sh"
+  },
+  "script-info": {
+    "dev": "Start development server with hot reload",
+    "build": "Build application for production",
+    "start": "Start production server",
+    "lint": "Run ESLint code checking",
+    "test": "Run Jest unit tests",
+    "test:e2e": "Run Playwright end-to-end tests",
+    "typecheck": "Run TypeScript type checking",
+    "git:start": "Start work session (pull latest, stash management)",
+    "git:save": "Save work (commit with safety checks, push)",
+    "git:sync": "Sync changes (merge remote, handle conflicts)",
+    "git:status": "Check git status and repository health",
+    "git:clean": "Clean working directory (with confirmation)",
+    "setup": "Complete development environment setup",
+    "precommit": "Run all quality checks before commit",
+    "diagnose-stuck": "Diagnose stuck processing notes",
+    "test:supabase": "Test Supabase database connection",
+    "test:openai": "Test OpenAI API connection"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
