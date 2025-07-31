@@ -45,8 +45,12 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   const maxPins = 10
 
-  // Create a stable ref for the refresh function to break circular dependencies
+  // Create stable refs to break circular dependencies
   const refreshPinnedTasksRef = useRef<() => Promise<void>>()
+  const pinnedTaskIdsRef = useRef<string[]>([])
+  
+  // Update ref when pinnedTaskIds changes
+  pinnedTaskIdsRef.current = pinnedTaskIds
   
   // Fetch pinned tasks from the API
   const refreshPinnedTasks = useCallback(async () => {
@@ -95,17 +99,6 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     // Early return after hooks are established
     if (!user) return
 
-    // Check pin limit
-    if (pinnedTaskIds.length >= maxPins) {
-      throw new Error(`Pin limit exceeded. You can only pin up to ${maxPins} tasks at a time.`)
-    }
-
-    // Check if task is already pinned (avoid duplicate operations)
-    if (pinnedTaskIds.includes(taskId)) {
-      console.log('⚠️ Task already pinned, skipping:', taskId)
-      return
-    }
-
     try {
       setError(null)
 
@@ -114,13 +107,38 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
         throw new Error('Authentication required')
       }
 
-      // Optimistic update with timestamp for conflict resolution
-      const optimisticTimestamp = Date.now()
+      // Use functional state update to avoid circular dependency
+      let shouldProceed = true
+      let errorMessage = ''
+      
       setPinnedTaskIds(prev => {
-        const updated = [...prev, taskId]
+        // Check if task is already pinned (avoid duplicate operations)
+        if (prev.includes(taskId)) {
+          console.log('⚠️ Task already pinned, skipping:', taskId)
+          shouldProceed = false
+          return prev // No change if already pinned
+        }
+
+        // Check pin limit
+        if (prev.length >= maxPins) {
+          errorMessage = `Pin limit exceeded. You can only pin up to ${maxPins} tasks at a time.`
+          shouldProceed = false
+          return prev // No change if limit exceeded
+        }
+
+        // Optimistic update with timestamp for conflict resolution
+        const optimisticTimestamp = Date.now()
         console.log('🚀 Optimistic pin update:', taskId, 'at', optimisticTimestamp)
-        return updated
+        return [...prev, taskId]
       })
+
+      // Check if we should proceed after state update
+      if (!shouldProceed) {
+        if (errorMessage) {
+          throw new Error(errorMessage)
+        }
+        return // Early exit if already pinned
+      }
 
       const response = await fetch(`/api/tasks/${taskId}/pin`, {
         method: 'POST',
@@ -153,23 +171,17 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
         return rolled
       })
       console.error('Error pinning task:', err)
-      const errorMessage = err instanceof Error ? err.message : 'Failed to pin task'
-      setError(errorMessage)
-      showToast(errorMessage, 'error')
+      const errorMsg = err instanceof Error ? err.message : 'Failed to pin task'
+      setError(errorMsg)
+      showToast(errorMsg, 'error')
       throw err
     }
-  }, [user, pinnedTaskIds, maxPins])
+  }, [user, maxPins, showToast])
 
   // Unpin a task with enhanced optimistic updates and conflict resolution
   const unpinTask = useCallback(async (taskId: string) => {
     // Early return after hooks are established
     if (!user) return
-
-    // Check if task is actually pinned (avoid unnecessary operations)
-    if (!pinnedTaskIds.includes(taskId)) {
-      console.log('⚠️ Task not pinned, skipping unpin:', taskId)
-      return
-    }
 
     try {
       setError(null)
@@ -179,16 +191,32 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
         throw new Error('Authentication required')
       }
 
-      // Store original state for rollback
-      const originalTaskIds = [...pinnedTaskIds]
+      // Use functional state update to avoid circular dependency
+      let shouldProceed = true
+      let originalTaskIds: string[] = []
       
-      // Optimistic update with timestamp for conflict resolution
-      const optimisticTimestamp = Date.now()
       setPinnedTaskIds(prev => {
+        // Check if task is actually pinned (avoid unnecessary operations)
+        if (!prev.includes(taskId)) {
+          console.log('⚠️ Task not pinned, skipping unpin:', taskId)
+          shouldProceed = false
+          return prev // No change if not pinned
+        }
+
+        // Store original state for rollback
+        originalTaskIds = [...prev]
+        
+        // Optimistic update with timestamp for conflict resolution
+        const optimisticTimestamp = Date.now()
         const updated = prev.filter(id => id !== taskId)
         console.log('🚀 Optimistic unpin update:', taskId, 'at', optimisticTimestamp)
         return updated
       })
+
+      // Check if we should proceed after state update
+      if (!shouldProceed) {
+        return // Early exit if not pinned
+      }
 
       const response = await fetch(`/api/tasks/${taskId}/pin`, {
         method: 'DELETE',
@@ -225,25 +253,12 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast(errorMessage, 'error')
       throw err
     }
-  }, [user, pinnedTaskIds])
+  }, [user, showToast])
 
   // Reorder a pinned task
   const reorderPin = useCallback(async (taskId: string, newIndex: number) => {
     // Early return after hooks are established
     if (!user) return
-
-    // Validate the task is actually pinned
-    const currentIndex = pinnedTaskIds.indexOf(taskId)
-    if (currentIndex === -1) {
-      console.log('⚠️ Cannot reorder - task not pinned:', taskId)
-      return
-    }
-
-    // Don't reorder if already in the correct position
-    if (currentIndex === newIndex) {
-      console.log('⚠️ Task already in correct position:', taskId, 'at index', newIndex)
-      return
-    }
 
     try {
       setError(null)
@@ -253,15 +268,42 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
         throw new Error('Authentication required')
       }
 
-      // Optimistic update - reorder in local state immediately
-      const originalOrder = [...pinnedTaskIds]
+      // Use functional state update to avoid circular dependency
+      let shouldProceed = true
+      let originalOrder: string[] = []
+      let currentIndex = -1
+      
       setPinnedTaskIds(prev => {
+        // Validate the task is actually pinned
+        currentIndex = prev.indexOf(taskId)
+        if (currentIndex === -1) {
+          console.log('⚠️ Cannot reorder - task not pinned:', taskId)
+          shouldProceed = false
+          return prev // No change if not pinned
+        }
+
+        // Don't reorder if already in the correct position
+        if (currentIndex === newIndex) {
+          console.log('⚠️ Task already in correct position:', taskId, 'at index', newIndex)
+          shouldProceed = false
+          return prev // No change if already in position
+        }
+
+        // Store original order for rollback
+        originalOrder = [...prev]
+        
+        // Optimistic update - reorder in local state immediately
         const newOrder = [...prev]
         const [movedItem] = newOrder.splice(currentIndex, 1)
         newOrder.splice(newIndex, 0, movedItem)
         console.log('🚀 Optimistic reorder:', taskId, 'from', currentIndex, 'to', newIndex)
         return newOrder
       })
+
+      // Check if we should proceed after state update
+      if (!shouldProceed) {
+        return // Early exit if validation failed
+      }
 
       const response = await fetch('/api/tasks/reorder-pins', {
         method: 'POST',
@@ -301,12 +343,12 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast(errorMessage, 'error')
       throw err
     }
-  }, [user, pinnedTaskIds, showToast])
+  }, [user, showToast])
 
-  // Check if a task is pinned
+  // Check if a task is pinned - use ref to avoid circular dependency
   const isPinned = useCallback((taskId: string) => {
-    return pinnedTaskIds.includes(taskId)
-  }, [pinnedTaskIds])
+    return pinnedTaskIdsRef.current.includes(taskId)
+  }, [])
 
   // Load pinned tasks when user changes
   useEffect(() => {
