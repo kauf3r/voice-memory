@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase-server'
+import { createServerClient } from '@/lib/supabase-server'
 
 interface ErrorReport {
   id: string
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Store error in database
+    const supabase = createServerClient()
     const { error } = await supabase
       .from('error_logs')
       .insert({
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest) {
     const route = searchParams.get('route')
     const limit = parseInt(searchParams.get('limit') || '50')
 
+    const supabase = createServerClient()
     let query = supabase
       .from('error_logs')
       .select('*')

@@ -16,93 +16,21 @@ const nextConfig = {
   },
   
   // Bundle optimization
-  webpack: (config, { isServer, webpack }) => {
+  webpack: (config, { isServer }) => {
     // Optimize chunks for better caching
     if (!isServer) {
       config.optimization.splitChunks = {
         ...config.optimization.splitChunks,
-        chunks: 'all',
         cacheGroups: {
           ...config.optimization.splitChunks.cacheGroups,
-          // Separate vendor chunks
           vendor: {
             test: /[\\/]node_modules[\\/]/,
             name: 'vendors',
             chunks: 'all',
-            priority: 10,
-          },
-          // Separate common chunks
-          common: {
-            name: 'common',
-            minChunks: 2,
-            chunks: 'all',
-            priority: 5,
-            reuseExistingChunk: true,
-            enforce: true,
-          },
-          // Separate large libraries
-          react: {
-            test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
-            name: 'react',
-            chunks: 'all',
-            priority: 20,
-          },
-          supabase: {
-            test: /[\\/]node_modules[\\/]@supabase[\\/]/,
-            name: 'supabase',
-            chunks: 'all',
-            priority: 15,
           },
         },
       }
-
-      // Performance optimizations
-      config.optimization.usedExports = true
-      config.optimization.sideEffects = false
-      
-      // Module concatenation for better tree shaking
-      config.optimization.concatenateModules = true
-      
-      // Minimize CSS
-      if (config.optimization.minimizer) {
-        const TerserPlugin = require('terser-webpack-plugin')
-        config.optimization.minimizer.push(
-          new TerserPlugin({
-            terserOptions: {
-              compress: {
-                drop_console: process.env.NODE_ENV === 'production',
-                drop_debugger: true,
-                pure_funcs: ['console.log', 'console.info'],
-              },
-              mangle: true,
-            },
-          })
-        )
-      }
     }
-
-    // Bundle analyzer
-    if (process.env.ANALYZE === 'true') {
-      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
-      config.plugins.push(
-        new BundleAnalyzerPlugin({
-          analyzerMode: 'static',
-          openAnalyzer: false,
-          generateStatsFile: true,
-          statsFilename: 'bundle-stats.json',
-        })
-      )
-    }
-
-    // Performance monitoring in development
-    if (process.env.NODE_ENV === 'development') {
-      config.plugins.push(
-        new webpack.DefinePlugin({
-          __PERFORMANCE_DEBUG__: JSON.stringify(true),
-        })
-      )
-    }
-
     return config
   },
   

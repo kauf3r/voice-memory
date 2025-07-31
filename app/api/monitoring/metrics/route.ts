@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase-server'
+import { createServerClient } from '@/lib/supabase-server'
 
 interface PerformanceMetric {
   name: string
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Store metric in database
+    const supabase = createServerClient()
     const { error } = await supabase
       .from('performance_metrics')
       .insert({
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
     const endTime = searchParams.get('end')
     const limit = parseInt(searchParams.get('limit') || '100')
 
+    const supabase = createServerClient()
     let query = supabase
       .from('performance_metrics')
       .select('*')
@@ -158,6 +160,7 @@ async function checkPerformanceThresholds(metric: PerformanceMetric) {
     })
 
     // Store performance alert
+    const supabase = createServerClient()
     await supabase
       .from('performance_alerts')
       .insert({

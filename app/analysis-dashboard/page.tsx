@@ -1,4 +1,4 @@
-import AnalysisDashboard from '@/components/AnalysisDashboard'
+import AnalysisDashboard from '@/app/components/AnalysisDashboard'
 
 export default function AnalysisDashboardPage() {
   return (
