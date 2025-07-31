@@ -376,32 +376,6 @@ audio: File (required) - Audio file (.mp3, .m4a, .wav, .aac, .ogg, .webm, .mp4)
 }
 ```
 
-### Error Monitoring
-**Endpoint**: `GET /api/monitoring/error`
-
-**Response**:
-```json
-{
-  "errors": [
-    {
-      "id": "uuid",
-      "message": "Error description",
-      "stack": "Stack trace",
-      "timestamp": "ISO date",
-      "endpoint": "/api/process",
-      "userId": "uuid"
-    }
-  ],
-  "summary": {
-    "total": 15,
-    "byType": {
-      "processing": 8,
-      "authentication": 4,
-      "validation": 3
-      }
-  }
-}
-```
 
 ## Integration Endpoints
 
