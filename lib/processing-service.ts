@@ -1,8 +1,10 @@
 import { createServiceClient } from './supabase-server'
-import { transcribeAudio, analyzeTranscription } from './openai'
+import { transcribeAudio, transcribeAudioWithCache, analyzeTranscription, analyzeTranscriptionEnhanced, analyzeTranscriptionMultiPass, getAnalysisMetrics } from './openai'
 import { createServerFile, createServerFileFromBuffer, getFilePathFromUrl, getMimeTypeFromUrl } from './storage'
 import { hasErrorTracking, logMigrationStatus } from './migration-checker'
 import { isVideoFile, processVideoFile } from './video-processor'
+import { optimizeAudioForTranscription, processAudioChunks, AudioOptimizationResult } from './audio-optimizer'
+import { assessTranscriptionComplexity } from './analysis'
 
 interface ProcessingJob {
   queue_id: string
@@ -20,6 +22,15 @@ interface ProcessingResult {
   warning?: string
   transcription?: string
   analysis?: any
+  optimization?: AudioOptimizationResult
+  fromCache?: boolean
+  processingMetrics?: {
+    totalTime: number
+    optimizationTime: number
+    transcriptionTime: number
+    analysisTime: number
+    costEstimate: number
+  }
 }
 
 interface ProcessingMetrics {
@@ -472,8 +483,18 @@ export class ProcessingService {
   private async processJobWithLock(job: ProcessingJob & { transcription?: string }, metrics: ProcessingMetrics): Promise<ProcessingResult> {
     console.log(`Processing job ${job.queue_id} for note ${job.note_id}`)
 
+    let optimization: AudioOptimizationResult | undefined
+    let processingMetrics = {
+      totalTime: 0,
+      optimizationTime: 0,
+      transcriptionTime: 0,
+      analysisTime: 0,
+      costEstimate: 0
+    }
+
     try {
       let transcription = job.transcription
+      let fromCache = false
 
       // Step 1: Transcribe audio (skip if transcription already exists)
       if (!transcription) {
@@ -491,33 +512,19 @@ export class ProcessingService {
           throw new Error(`Could not retrieve audio file: ${storageError?.message}`)
         }
 
-        // Convert blob to File object for Whisper API using robust Buffer-based method
+        // Convert blob to Buffer for optimization
         const buffer = await audioData.arrayBuffer()
         const nodeBuffer = Buffer.from(buffer)
-        
-        // Enhanced MIME detection with better M4A/MP4 handling - read first 32 bytes for magic bytes
-        const magicBytes = nodeBuffer.slice(0, 32)
-        const mimeType = getMimeTypeFromUrl(job.audio_url, magicBytes)
         const extension = job.audio_url.split('.').pop()?.toLowerCase() || 'mp3'
         
         console.log(`Processing file: ${job.audio_url}`);
         console.log(`  Extension: .${extension}`);
-        console.log(`  Detected MIME type: ${mimeType}`);
         console.log(`  File size: ${nodeBuffer.length} bytes`);
-        console.log(`  Magic bytes: ${Array.from(new Uint8Array(magicBytes.slice(0, 12))).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
-        
-        // Special logging for M4A files to help debug processing issues
-        if (extension === 'm4a' || mimeType.includes('mp4')) {
-          console.log(`M4A/MP4 container detected - Extension: ${extension}, MIME: ${mimeType}`);
-          // Log ftyp brand if it's an MP4 container
-          if (magicBytes[4] === 0x66 && magicBytes[5] === 0x74 && magicBytes[6] === 0x79 && magicBytes[7] === 0x70) {
-            const brandBytes = new Uint8Array(magicBytes.buffer, magicBytes.byteOffset + 8, 4);
-            const brand = String.fromCharCode(...Array.from(brandBytes));
-            console.log(`  MP4 container brand: '${brand}'`);
-          }
-        }
-        
+
         // Check if this is a video file that requires special processing
+        const magicBytes = nodeBuffer.slice(0, 32)
+        const mimeType = getMimeTypeFromUrl(job.audio_url, magicBytes)
+        
         if (isVideoFile(mimeType, job.audio_url)) {
           console.log(`Video file detected: ${job.audio_url}`);
           
@@ -533,51 +540,106 @@ export class ProcessingService {
           // If successful, use the extracted audio buffer
           if (videoProcessingResult.audioBuffer && videoProcessingResult.audioMimeType) {
             console.log('Audio successfully extracted from video');
-            const extractedAudioFile = createServerFileFromBuffer(
-              videoProcessingResult.audioBuffer, 
-              `${job.note_id}_extracted.mp3`, 
-              videoProcessingResult.audioMimeType
-            );
-            
-            // Continue with transcription using extracted audio
-            // (The transcription code below will use this file)
+            // Update nodeBuffer with extracted audio
+            // nodeBuffer = videoProcessingResult.audioBuffer
           }
         }
-        
-        // Use the more robust Buffer-based file creation for better OpenAI compatibility
-        const audioFile = createServerFileFromBuffer(nodeBuffer, `${job.note_id}.${extension}`, mimeType)
 
-        // Use circuit breaker for OpenAI API calls with enhanced error logging
-        console.log(`Sending to Whisper API: ${audioFile.name} (${audioFile.type}, ${audioFile.size} bytes)`);
-        const { text: transcriptionResult, error: transcriptionError } = await this.circuitBreaker.execute(
-          () => transcribeAudio(audioFile)
+        // Step 1.1: Optimize audio for transcription
+        const optimizationStartTime = Date.now()
+        optimization = await optimizeAudioForTranscription(nodeBuffer, `${job.note_id}.${extension}`)
+        processingMetrics.optimizationTime = Date.now() - optimizationStartTime
+        processingMetrics.costEstimate = optimization.processingCost
+
+        console.log('Audio optimization complete:', {
+          originalSize: optimization.originalSize,
+          optimizedSize: optimization.optimizedSize,
+          compressionRatio: optimization.compressionRatio.toFixed(2),
+          whisperModel: optimization.whisperModel,
+          shouldChunk: optimization.shouldChunk,
+          estimatedCost: `$${optimization.processingCost.toFixed(4)}`
+        })
+
+        // Step 1.2: Create optimized audio file
+        const audioFile = createServerFileFromBuffer(
+          optimization.optimizedBuffer, 
+          `${job.note_id}.${extension}`, 
+          mimeType
         )
 
-        if (transcriptionError || !transcriptionResult) {
-          metrics.errorCategory = 'transcription'
+        // Step 1.3: Handle chunked processing for large files
+        if (optimization.shouldChunk && optimization.chunkStrategy) {
+          console.log(`Processing ${optimization.chunkStrategy.chunks.length} audio chunks`)
           
-          // Enhanced error logging for M4A/MP4 files
-          console.error(`Transcription failed for ${extension} file:`, {
-            noteId: job.note_id,
-            fileName: audioFile.name,
-            fileType: audioFile.type,
-            fileSize: audioFile.size,
-            originalUrl: job.audio_url,
-            extension: extension,
-            detectedMimeType: mimeType,
-            errorMessage: transcriptionError?.message
-          });
-          
-          // Specific error for M4A files
-          if (extension === 'm4a' || mimeType.includes('mp4')) {
-            throw new Error(`M4A/MP4 transcription failed: ${transcriptionError?.message}. This may be due to container format compatibility issues.`);
+          const chunkTranscriptionFunction = async (chunkBuffer: Buffer, chunkFilename: string) => {
+            const chunkFile = createServerFileFromBuffer(chunkBuffer, chunkFilename, mimeType)
+            const result = await this.circuitBreaker.execute(
+              () => transcribeAudioWithCache(chunkFile, {
+                model: optimization!.whisperModel,
+                enableLanguageDetection: true
+              })
+            )
+            
+            if (result.error) {
+              throw new Error(`Chunk transcription failed: ${result.error.message}`)
+            }
+            
+            return result.text || ''
           }
+
+          const chunkResults = await processAudioChunks(
+            optimization.chunkStrategy.chunks,
+            chunkTranscriptionFunction,
+            `${job.note_id}.${extension}`
+          )
+
+          transcription = chunkResults.text
+          fromCache = chunkResults.chunkResults.some(r => r.text.includes('[cached]')) // Simplified cache detection
           
-          throw new Error(`Transcription failed: ${transcriptionError?.message}`)
+          console.log(`Chunked transcription complete: ${chunkResults.chunkResults.length} chunks processed`)
+        } else {
+          // Step 1.4: Single file transcription with caching
+          console.log(`Sending optimized audio to Whisper API: ${audioFile.name} (${audioFile.type}, ${audioFile.size} bytes)`);
+          
+          const transcriptionResult = await this.circuitBreaker.execute(
+            () => transcribeAudioWithCache(audioFile, {
+              model: optimization!.whisperModel,
+              enableLanguageDetection: true,
+              prompt: "This is a voice note recording. Please provide accurate transcription with proper punctuation."
+            })
+          )
+
+          if (transcriptionResult.error || !transcriptionResult.text) {
+            metrics.errorCategory = 'transcription'
+            
+            // Enhanced error logging
+            console.error(`Transcription failed for ${extension} file:`, {
+              noteId: job.note_id,
+              fileName: audioFile.name,
+              fileType: audioFile.type,
+              fileSize: audioFile.size,
+              originalUrl: job.audio_url,
+              extension: extension,
+              detectedMimeType: mimeType,
+              optimization: optimization,
+              errorMessage: transcriptionResult.error?.message
+            });
+            
+            throw new Error(`Transcription failed: ${transcriptionResult.error?.message}`)
+          }
+
+          transcription = transcriptionResult.text
+          fromCache = transcriptionResult.fromCache || false
+          
+          console.log('Transcription completed:', {
+            length: transcription.length,
+            fromCache,
+            model: optimization.whisperModel,
+            language: transcriptionResult.metadata?.language
+          })
         }
 
-        transcription = transcriptionResult
-        metrics.transcriptionTime = Date.now() - transcriptionStartTime
+        processingMetrics.transcriptionTime = Date.now() - transcriptionStartTime
 
         // Save partial progress (transcription)
         await this.supabase
@@ -599,21 +661,96 @@ export class ProcessingService {
         JSON.stringify(projectKnowledge.content) : 
         ''
 
-      // Step 3: Analyze transcription
+      // Step 3: Enhanced Analysis with intelligent model selection
       metrics.processingStage = 'analysis'
       const analysisStartTime = Date.now()
       
-      // Use circuit breaker for OpenAI API calls
-      const { analysis, error: analysisError, warning } = await this.circuitBreaker.execute(
-        () => analyzeTranscription(transcription, knowledgeContext, job.recorded_at)
-      )
+      console.log('Starting enhanced analysis...')
+      
+      // Assess complexity to determine analysis approach
+      const complexity = assessTranscriptionComplexity(transcription, knowledgeContext)
+      console.log(`Analysis complexity: ${complexity.level} (score: ${complexity.score.toFixed(2)})`, {
+        factors: complexity.factors,
+        reasoning: complexity.reasoning
+      })
+      
+      // Determine analysis strategy based on complexity and content length
+      let analysisResult
+      
+      if (complexity.level === 'complex' || transcription.length > 3000) {
+        console.log('Using multi-pass analysis for complex content')
+        // Use multi-pass analysis for complex content
+        const multiPassResult = await this.circuitBreaker.execute(
+          () => analyzeTranscriptionMultiPass(transcription, knowledgeContext, job.recorded_at)
+        )
+        
+        analysisResult = {
+          analysis: multiPassResult.analysis,
+          error: multiPassResult.error,
+          warning: multiPassResult.warning || `Multi-pass analysis completed with ${multiPassResult.passes.length} passes`,
+          metadata: {
+            analysisStrategy: 'multi-pass',
+            passes: multiPassResult.passes,
+            complexity: complexity.level
+          }
+        }
+      } else {
+        console.log('Using enhanced single-pass analysis')
+        // Use enhanced single-pass analysis for standard content
+        const enhancedResult = await this.circuitBreaker.execute(
+          () => analyzeTranscriptionEnhanced(
+            transcription, 
+            knowledgeContext, 
+            job.recorded_at,
+            undefined, // userPatterns - could be populated from historical data
+            {
+              // Let the system choose the optimal model based on complexity
+              enableMultiPass: false,
+              confidenceThreshold: 0.8
+            }
+          )
+        )
+        
+        analysisResult = {
+          analysis: enhancedResult.analysis,
+          error: enhancedResult.error,
+          warning: enhancedResult.warning,
+          metadata: {
+            analysisStrategy: 'enhanced-single-pass',
+            model: enhancedResult.metadata.model,
+            confidence: enhancedResult.metadata.confidence,
+            cost: enhancedResult.metadata.cost,
+            complexity: enhancedResult.metadata.complexity,
+            fromCache: enhancedResult.metadata.fromCache
+          }
+        }
+      }
+      
+      const { analysis, error: analysisError, warning } = analysisResult
 
       if (analysisError) {
         metrics.errorCategory = 'analysis'
-        throw new Error(`Analysis failed: ${analysisError.message}`)
+        throw new Error(`Enhanced analysis failed: ${analysisError.message}`)
       }
+      
+      // Log analysis metrics
+      const analysisMetrics = getAnalysisMetrics()
+      console.log('Analysis performance metrics:', {
+        cacheHitRate: (analysisMetrics.cacheHitRate * 100).toFixed(1) + '%',
+        averageCost: '$' + analysisMetrics.averageCostPerRequest.toFixed(4),
+        totalCost: '$' + analysisMetrics.totalCost.toFixed(4),
+        modelDistribution: {
+          gpt4: analysisMetrics.gpt4Requests,
+          gpt35: analysisMetrics.gpt35Requests
+        }
+      })
 
       metrics.analysisTime = Date.now() - analysisStartTime
+      
+      // Enhanced warning message with analysis metadata
+      const enhancedWarning = warning ? 
+        `${warning} | Strategy: ${analysisResult.metadata.analysisStrategy}` : 
+        undefined
 
       // Step 4: Update note with results and release lock
       metrics.processingStage = 'saving'
@@ -651,11 +788,19 @@ export class ProcessingService {
         console.warn(`Processing completed with warning for note ${job.note_id}: ${warning}`)
       }
 
+      // Calculate final metrics
+      processingMetrics.totalTime = Date.now() - metrics.startTime
+      processingMetrics.analysisTime = Date.now() - analysisStartTime
+
       return {
         success: true,
         transcription,
         analysis,
-        warning
+        warning: enhancedWarning,
+        optimization,
+        fromCache,
+        processingMetrics,
+        analysisMetadata: analysisResult.metadata
       }
 
     } catch (error) {

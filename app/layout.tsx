@@ -7,6 +7,7 @@ import { ToastProvider } from './components/ToastProvider'
 import AuthDebugInfo from './components/AuthDebugInfo'
 import BetaFeatures from './components/BetaFeatures'
 import { PerformanceMonitor } from '@/lib/performance/PerformanceMonitor'
+import MonitoringDashboard from './components/MonitoringDashboard'
 
 // Use system fonts instead of Google Fonts to avoid build issues
 const systemFonts = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
@@ -76,6 +77,7 @@ export default function RootLayout({
                   {children}
                   <AuthDebugInfo />
                   <BetaFeatures />
+                  <MonitoringDashboard />
                 </ProcessingStatsProvider>
               </ToastProvider>
             </AuthProvider>

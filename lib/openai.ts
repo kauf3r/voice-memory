@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { validateAnalysis, type ValidatedAnalysis } from './validation'
-import { buildAnalysisPrompt } from './analysis'
+import { buildAnalysisPrompt, buildEnhancedAnalysisPrompt, assessTranscriptionComplexity, generateAnalysisCacheKey, estimateAnalysisCost, type AnalysisConfig } from './analysis'
 import { createServiceClient } from './supabase-server'
 
 // Lazy initialization to ensure environment variables are loaded
@@ -21,6 +21,7 @@ function getOpenAIClient(): OpenAI {
 // Configurable model names with environment variable fallbacks
 const OPENAI_MODELS = {
   whisper: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
+  whisperLarge: process.env.OPENAI_WHISPER_LARGE_MODEL || 'whisper-1', // Future large model
   gpt: process.env.OPENAI_GPT_MODEL || 'gpt-4-turbo-preview'
 }
 
@@ -293,24 +294,64 @@ async function withRetry<T>(
   throw lastError!
 }
 
-export async function transcribeAudio(file: File): Promise<{ text: string | null; error: Error | null }> {
+// Enhanced transcription with model selection and language detection
+export async function transcribeAudio(
+  file: File, 
+  options: {
+    model?: 'whisper-1' | 'whisper-large'
+    language?: string
+    enableLanguageDetection?: boolean
+    temperature?: number
+    prompt?: string
+  } = {}
+): Promise<{ text: string | null; error: Error | null; metadata?: any }> {
   return withRetry(async () => {
     // Check rate limit
     if (!(await rateLimiter.canMakeRequest('whisper', RATE_LIMIT.whisper.requestsPerMinute))) {
       throw new Error('Rate limit exceeded for Whisper API. Please try again later.')
     }
 
-    console.log('Starting transcription for file:', file.name, 'Size:', file.size, 'Model:', OPENAI_MODELS.whisper)
+    const selectedModel = options.model === 'whisper-large' ? OPENAI_MODELS.whisperLarge : OPENAI_MODELS.whisper
+    console.log('Starting transcription for file:', file.name, 'Size:', file.size, 'Model:', selectedModel)
 
-    const transcription = await getOpenAIClient().audio.transcriptions.create({
+    const transcriptionParams: any = {
       file: file,
-      model: OPENAI_MODELS.whisper,
-      response_format: 'text',
-      language: 'en', // Can be made configurable
+      model: selectedModel,
+      response_format: 'verbose_json', // Get more metadata
+      temperature: options.temperature || 0,
+    }
+
+    // Add language if specified, otherwise let Whisper auto-detect
+    if (options.language && !options.enableLanguageDetection) {
+      transcriptionParams.language = options.language
+    }
+
+    // Add prompt for better context if provided
+    if (options.prompt) {
+      transcriptionParams.prompt = options.prompt
+    }
+
+    const transcription = await getOpenAIClient().audio.transcriptions.create(transcriptionParams)
+
+    const result = {
+      text: transcription.text,
+      error: null,
+      metadata: {
+        language: transcription.language,
+        duration: transcription.duration,
+        segments: transcription.segments?.slice(0, 5), // First 5 segments for debugging
+        model: selectedModel
+      }
+    }
+
+    console.log('Transcription completed:', {
+      length: result.text.length,
+      language: result.metadata.language,
+      duration: result.metadata.duration,
+      model: selectedModel
     })
 
-    console.log('Transcription completed, length:', transcription.length)
-    return { text: transcription, error: null }
+    return result
   }).catch((error) => {
     console.error('Transcription error:', error)
     
@@ -334,53 +375,320 @@ export async function transcribeAudio(file: File): Promise<{ text: string | null
       return { text: null, error }
     }
     
-    return { text: null, error: new Error('Transcription failed') }
+    return { text: null, error: new Error('Transcription failed'), metadata: null }
   })
 }
 
-export async function analyzeTranscription(
-  transcription: string, 
+// Cache for frequently transcribed content
+const transcriptionCache = new Map<string, { text: string; timestamp: number; metadata: any }>()
+const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
+
+/**
+ * Generate cache key for audio content
+ */
+function generateCacheKey(file: File, options: any): string {
+  // Create a simple hash of file properties and options
+  const content = `${file.name}-${file.size}-${file.lastModified}-${JSON.stringify(options)}`
+  let hash = 0
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32-bit integer
+  }
+  return hash.toString(36)
+}
+
+/**
+ * Transcribe with caching for repeated content
+ */
+export async function transcribeAudioWithCache(
+  file: File,
+  options: Parameters<typeof transcribeAudio>[1] = {}
+): Promise<{ text: string | null; error: Error | null; metadata?: any; fromCache?: boolean }> {
+  
+  const cacheKey = generateCacheKey(file, options)
+  const cached = transcriptionCache.get(cacheKey)
+  
+  // Check if we have a valid cached result
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log('Using cached transcription for:', file.name)
+    return {
+      text: cached.text,
+      error: null,
+      metadata: cached.metadata,
+      fromCache: true
+    }
+  }
+  
+  // Transcribe fresh
+  const result = await transcribeAudio(file, options)
+  
+  // Cache successful results
+  if (result.text && !result.error) {
+    transcriptionCache.set(cacheKey, {
+      text: result.text,
+      timestamp: Date.now(),
+      metadata: result.metadata
+    })
+    
+    // Clean old cache entries periodically
+    if (transcriptionCache.size > 100) {
+      const now = Date.now()
+      for (const [key, value] of transcriptionCache.entries()) {
+        if (now - value.timestamp > CACHE_DURATION) {
+          transcriptionCache.delete(key)
+        }
+      }
+    }
+  }
+  
+  return { ...result, fromCache: false }
+}
+
+// Enhanced analysis cache with metadata
+interface CachedAnalysis {
+  analysis: ValidatedAnalysis
+  timestamp: number
+  model: string
+  confidence: number
+  cost: number
+  complexity: string
+}
+
+const analysisCache = new Map<string, CachedAnalysis>()
+const ANALYSIS_CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
+const MAX_CACHE_SIZE = 500
+
+// Analysis performance metrics
+interface AnalysisMetrics {
+  totalRequests: number
+  cacheHits: number
+  gpt4Requests: number
+  gpt35Requests: number
+  totalCost: number
+  averageConfidence: number
+  errorRate: number
+}
+
+const analysisMetrics: AnalysisMetrics = {
+  totalRequests: 0,
+  cacheHits: 0,
+  gpt4Requests: 0,
+  gpt35Requests: 0,
+  totalCost: 0,
+  averageConfidence: 0,
+  errorRate: 0
+}
+
+/**
+ * Enhanced analysis with intelligent model selection and caching
+ */
+export async function analyzeTranscriptionEnhanced(
+  transcription: string,
   projectKnowledge: string = '',
-  recordingDate?: string
+  recordingDate?: string,
+  userPatterns?: string,
+  options: {
+    forceModel?: 'gpt-4' | 'gpt-3.5-turbo'
+    skipCache?: boolean
+    enableMultiPass?: boolean
+    confidenceThreshold?: number
+  } = {}
+): Promise<{
+  analysis: ValidatedAnalysis | null
+  error: Error | null
+  warning?: string
+  metadata: {
+    model: string
+    fromCache: boolean
+    confidence: number
+    cost: number
+    complexity: string
+    processingTime: number
+    cacheKey?: string
+  }
+}> {
+  const startTime = Date.now()
+  analysisMetrics.totalRequests++
+  
+  try {
+    // Step 1: Assess complexity and determine optimal configuration
+    const complexity = assessTranscriptionComplexity(transcription, projectKnowledge)
+    const { prompt, config } = buildEnhancedAnalysisPrompt(
+      transcription,
+      projectKnowledge,
+      recordingDate,
+      userPatterns,
+      complexity
+    )
+    
+    // Override model if specified
+    if (options.forceModel) {
+      config.model = options.forceModel
+    }
+    
+    console.log(`Analysis complexity: ${complexity.level} (score: ${complexity.score.toFixed(2)})`, {
+      factors: complexity.factors,
+      selectedModel: config.model,
+      reasoning: complexity.reasoning
+    })
+    
+    // Step 2: Check cache if enabled
+    const cacheKey = generateAnalysisCacheKey(transcription, projectKnowledge)
+    
+    if (!options.skipCache) {
+      const cached = analysisCache.get(cacheKey)
+      if (cached && Date.now() - cached.timestamp < ANALYSIS_CACHE_DURATION) {
+        analysisMetrics.cacheHits++
+        console.log('Using cached analysis result')
+        
+        return {
+          analysis: cached.analysis,
+          error: null,
+          metadata: {
+            model: cached.model,
+            fromCache: true,
+            confidence: cached.confidence,
+            cost: 0, // No cost for cached results
+            complexity: complexity.level,
+            processingTime: Date.now() - startTime,
+            cacheKey
+          }
+        }
+      }
+    }
+    
+    // Step 3: Estimate cost and check rate limits
+    const estimatedCost = estimateAnalysisCost(transcription, config)
+    const rateLimitService = config.model === 'gpt-4' ? 'gpt4' : 'gpt35'
+    const rateLimitConfig = config.model === 'gpt-4' ? RATE_LIMIT.gpt4 : RATE_LIMIT.gpt4 // Using same limits for now
+    
+    if (!(await rateLimiter.canMakeRequest(rateLimitService, rateLimitConfig.requestsPerMinute))) {
+      throw new Error(`Rate limit exceeded for ${config.model} API. Please try again later.`)
+    }
+    
+    console.log(`Processing with ${config.model} (estimated cost: $${estimatedCost.toFixed(4)})`)
+    
+    // Step 4: Perform analysis with selected model
+    const result = await performAnalysisWithConfig(prompt, config, complexity.level)
+    
+    // Step 5: Update metrics
+    if (config.model === 'gpt-4') {
+      analysisMetrics.gpt4Requests++
+    } else {
+      analysisMetrics.gpt35Requests++
+    }
+    analysisMetrics.totalCost += estimatedCost
+    
+    // Step 6: Cache successful results
+    if (result.analysis && !options.skipCache) {
+      const confidence = result.analysis.analysisMetadata?.overallConfidence || 0.8
+      
+      // Only cache high-confidence results
+      if (confidence >= (options.confidenceThreshold || config.confidenceThreshold)) {
+        analysisCache.set(cacheKey, {
+          analysis: result.analysis,
+          timestamp: Date.now(),
+          model: config.model,
+          confidence,
+          cost: estimatedCost,
+          complexity: complexity.level
+        })
+        
+        // Clean cache if it gets too large
+        if (analysisCache.size > MAX_CACHE_SIZE) {
+          cleanAnalysisCache()
+        }
+      }
+    }
+    
+    const processingTime = Date.now() - startTime
+    
+    return {
+      analysis: result.analysis,
+      error: result.error,
+      warning: result.warning,
+      metadata: {
+        model: config.model,
+        fromCache: false,
+        confidence: result.analysis?.analysisMetadata?.overallConfidence || 0,
+        cost: estimatedCost,
+        complexity: complexity.level,
+        processingTime,
+        cacheKey
+      }
+    }
+    
+  } catch (error) {
+    analysisMetrics.errorRate = (analysisMetrics.errorRate * (analysisMetrics.totalRequests - 1) + 1) / analysisMetrics.totalRequests
+    
+    console.error('Enhanced analysis error:', error)
+    
+    return {
+      analysis: null,
+      error: error instanceof Error ? error : new Error('Analysis failed'),
+      metadata: {
+        model: 'unknown',
+        fromCache: false,
+        confidence: 0,
+        cost: 0,
+        complexity: 'unknown',
+        processingTime: Date.now() - startTime
+      }
+    }
+  }
+}
+
+/**
+ * Perform analysis with specific configuration
+ */
+async function performAnalysisWithConfig(
+  prompt: string,
+  config: AnalysisConfig,
+  complexityLevel: string
 ): Promise<{ analysis: ValidatedAnalysis | null; error: Error | null; warning?: string }> {
   return withRetry(async () => {
-    // Check rate limit
-    if (!(await rateLimiter.canMakeRequest('gpt4', RATE_LIMIT.gpt4.requestsPerMinute))) {
-      throw new Error('Rate limit exceeded for GPT-4 API. Please try again later.')
-    }
+    const systemPrompt = `You are an expert AI analyst specializing in voice note analysis. You provide comprehensive, accurate insights with confidence scoring.
 
-    console.log('Starting analysis for transcription length:', transcription.length, 'Model:', OPENAI_MODELS.gpt)
+Key principles:
+- Always return valid JSON matching the exact schema
+- Provide confidence scores for all major insights
+- Focus on actionable, valuable information
+- Use specific examples from the transcription
+- Maintain consistency in terminology
 
-    const prompt = buildAnalysisPrompt(transcription, projectKnowledge, recordingDate)
+Complexity level: ${complexityLevel}
+Expected quality: ${config.confidenceThreshold >= 0.9 ? 'High precision' : 'Standard quality'}`
 
     const completion = await getOpenAIClient().chat.completions.create({
-      model: OPENAI_MODELS.gpt,
+      model: config.model,
       messages: [
         {
           role: 'system',
-          content: 'You are an expert analyst who extracts actionable insights from voice notes. Always return valid JSON.'
+          content: systemPrompt
         },
         {
           role: 'user',
           content: prompt
         }
       ],
-      temperature: 0.3,
-      max_tokens: 2000,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      response_format: { type: "json_object" } // Force JSON response
     })
 
     const responseText = completion.choices[0]?.message?.content?.trim()
     
     if (!responseText) {
-      throw new Error('Empty response from GPT-4')
+      throw new Error(`Empty response from ${config.model}`)
     }
 
-    console.log('GPT-4 analysis completed, response length:', responseText.length)
+    console.log(`${config.model} analysis completed, response length:`, responseText.length)
 
-    // Parse JSON response - handle markdown code blocks
+    // Parse JSON response
     let rawAnalysis
     try {
-      // Remove markdown code blocks if present
+      // Clean up response if needed
       let cleanedResponse = responseText.trim()
       if (cleanedResponse.startsWith('```json')) {
         cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
@@ -389,10 +697,24 @@ export async function analyzeTranscription(
       }
       
       rawAnalysis = JSON.parse(cleanedResponse)
+      
+      // Add metadata if not present
+      if (!rawAnalysis.analysisMetadata) {
+        rawAnalysis.analysisMetadata = {
+          version: '2.0',
+          model: config.model,
+          processingTime: '0ms',
+          overallConfidence: 0.8,
+          complexityScore: 0.5,
+          qualityFlags: ['standard_analysis'],
+          suggestions: []
+        }
+      }
+      
     } catch (parseError) {
       console.error('JSON parse error:', parseError)
-      console.error('Raw response:', responseText)
-      throw new Error('Invalid JSON response from GPT-4')
+      console.error('Raw response:', responseText.substring(0, 500) + '...')
+      throw new Error(`Invalid JSON response from ${config.model}`)
     }
 
     // Validate the analysis structure
@@ -409,32 +731,161 @@ export async function analyzeTranscription(
 
     // Add warning if validation had to fix issues
     if (validationError) {
-      result.warning = validationError
+      result.warning = `Validation adjustments made: ${validationError}`
     }
 
     return result
-  }).catch((error) => {
-    console.error('Analysis error:', error)
+  })
+}
+
+/**
+ * Legacy analysis function for backward compatibility
+ */
+export async function analyzeTranscription(
+  transcription: string, 
+  projectKnowledge: string = '',
+  recordingDate?: string
+): Promise<{ analysis: ValidatedAnalysis | null; error: Error | null; warning?: string }> {
+  const result = await analyzeTranscriptionEnhanced(transcription, projectKnowledge, recordingDate)
+  return {
+    analysis: result.analysis,
+    error: result.error,
+    warning: result.warning
+  }
+}
+
+/**
+ * Multi-pass analysis for complex content
+ */
+export async function analyzeTranscriptionMultiPass(
+  transcription: string,
+  projectKnowledge: string = '',
+  recordingDate?: string
+): Promise<{
+  analysis: ValidatedAnalysis | null
+  error: Error | null
+  warning?: string
+  passes: Array<{ model: string; confidence: number; focus: string }>
+}> {
+  const passes: Array<{ model: string; confidence: number; focus: string }> = []
+  
+  try {
+    // Pass 1: Quick analysis with GPT-3.5-turbo for basic structure
+    const quickResult = await analyzeTranscriptionEnhanced(
+      transcription,
+      projectKnowledge,
+      recordingDate,
+      undefined,
+      { forceModel: 'gpt-3.5-turbo' }
+    )
     
-    if (error instanceof Error) {
-      // Enhanced error categorization
-      if (error.message.includes('rate_limit')) {
-        return { analysis: null, error: new Error('OpenAI rate limit exceeded. Please try again later.') }
+    passes.push({
+      model: 'gpt-3.5-turbo',
+      confidence: quickResult.metadata.confidence,
+      focus: 'basic_structure'
+    })
+    
+    // If quick analysis has low confidence, do detailed pass with GPT-4
+    if (quickResult.metadata.confidence < 0.7 || quickResult.metadata.complexity === 'complex') {
+      const detailedResult = await analyzeTranscriptionEnhanced(
+        transcription,
+        projectKnowledge,
+        recordingDate,
+        undefined,
+        { forceModel: 'gpt-4', skipCache: false }
+      )
+      
+      passes.push({
+        model: 'gpt-4',
+        confidence: detailedResult.metadata.confidence,
+        focus: 'detailed_analysis'
+      })
+      
+      // Use the higher confidence result
+      if (detailedResult.metadata.confidence > quickResult.metadata.confidence) {
+        return {
+          analysis: detailedResult.analysis,
+          error: detailedResult.error,
+          warning: detailedResult.warning,
+          passes
+        }
       }
-      if (error.message.includes('context_length')) {
-        return { analysis: null, error: new Error('Text too long for analysis.') }
-      }
-      if (error.message.includes('quota_exceeded')) {
-        return { analysis: null, error: new Error('OpenAI quota exceeded. Please check your account.') }
-      }
-      if (error.message.includes('authentication')) {
-        return { analysis: null, error: new Error('OpenAI authentication failed. Please check your API key.') }
-      }
-      return { analysis: null, error }
     }
     
-    return { analysis: null, error: new Error('Analysis failed') }
+    return {
+      analysis: quickResult.analysis,
+      error: quickResult.error,
+      warning: quickResult.warning,
+      passes
+    }
+    
+  } catch (error) {
+    return {
+      analysis: null,
+      error: error instanceof Error ? error : new Error('Multi-pass analysis failed'),
+      warning: 'Multi-pass analysis encountered errors',
+      passes
+    }
+  }
+}
+
+/**
+ * Clean analysis cache by removing old entries
+ */
+function cleanAnalysisCache(): void {
+  const now = Date.now()
+  const entries = Array.from(analysisCache.entries())
+  
+  // Remove expired entries first
+  entries.forEach(([key, value]) => {
+    if (now - value.timestamp > ANALYSIS_CACHE_DURATION) {
+      analysisCache.delete(key)
+    }
   })
+  
+  // If still too large, remove oldest entries
+  if (analysisCache.size > MAX_CACHE_SIZE) {
+    const sortedEntries = Array.from(analysisCache.entries())
+      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+    
+    const toRemove = sortedEntries.slice(0, analysisCache.size - MAX_CACHE_SIZE + 50)
+    toRemove.forEach(([key]) => analysisCache.delete(key))
+    
+    console.log(`Cleaned ${toRemove.length} entries from analysis cache`)
+  }
+}
+
+/**
+ * Get analysis performance metrics
+ */
+export function getAnalysisMetrics(): AnalysisMetrics & {
+  cacheHitRate: number
+  averageCostPerRequest: number
+  cacheSize: number
+} {
+  return {
+    ...analysisMetrics,
+    cacheHitRate: analysisMetrics.totalRequests > 0 ? analysisMetrics.cacheHits / analysisMetrics.totalRequests : 0,
+    averageCostPerRequest: analysisMetrics.totalRequests > 0 ? analysisMetrics.totalCost / analysisMetrics.totalRequests : 0,
+    cacheSize: analysisCache.size
+  }
+}
+
+/**
+ * Reset analysis metrics (for testing or periodic resets)
+ */
+export function resetAnalysisMetrics(): void {
+  Object.assign(analysisMetrics, {
+    totalRequests: 0,
+    cacheHits: 0,
+    gpt4Requests: 0,
+    gpt35Requests: 0,
+    totalCost: 0,
+    averageConfidence: 0,
+    errorRate: 0
+  })
+  analysisCache.clear()
+  console.log('Analysis metrics and cache reset')
 }
 
 export default openai

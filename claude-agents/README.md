@@ -1,4 +1,4 @@
-# Claude Code Custom Agents
+1# Claude Code Custom Agents
 
 This repository contains custom agents for Claude Code.
 
@@ -23,6 +23,7 @@ cp agents/*.md ~/.claude/agents/
 - **code-refactorer**: Code refactoring assistance
 - **content-writer**: Content writing assistance
 - **frontend-designer**: Frontend design assistance
+- **mission-brief**: UAS mission planning and Trinity Pro RGB mapping operations
 - **prd-writer**: Product requirement document writing
 - **project-task-planner**: Project planning and task breakdown
 - **security-auditor**: Security audit assistance

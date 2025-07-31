@@ -107,69 +107,126 @@ export interface RetryRequest {
   batchSize?: number
 }
 
+// Enhanced analysis types with backward compatibility
 export interface NoteAnalysis {
   sentiment: {
     classification: 'Positive' | 'Neutral' | 'Negative'
     explanation: string
+    confidence?: number
+    nuances?: string[]
+    energyLevel?: 'high' | 'medium' | 'low'
+    moodProgression?: string
   }
   focusTopics: {
     primary: string
     minor: [string, string]
+    relevanceScores?: number[]
+    domainClassification?: string
+    topicRelationships?: string[]
   }
   tasks: {
-    myTasks: string[]
+    // Support both legacy and enhanced formats
+    myTasks: string[] | Array<{
+      description: string
+      priority?: 'High' | 'Medium' | 'Low'
+      effort?: 'Quick' | 'Medium' | 'Complex'
+      dueDate?: string
+      context?: string
+      dependencies?: string[]
+    }>
     delegatedTasks: Array<{
       task: string
       assignedTo: string
       nextSteps: string
+      relationship?: string
+      successCriteria?: string
+      priority?: 'High' | 'Medium' | 'Low'
     }>
   }
-  keyIdeas: string[]
+  keyIdeas: string[] | Array<{
+    concept: string
+    impact?: string
+    feasibility?: string
+    novelty?: string
+    connections?: string[]
+  }>
   messagesToDraft: Array<{
     recipient: string
     subject: string
     body: string
+    relationship?: string
+    tone?: 'professional' | 'casual' | 'formal'
+    urgency?: 'high' | 'medium' | 'low'
+    callToAction?: string
   }>
   crossReferences: {
-    relatedNotes: string[]
-    projectKnowledgeUpdates: string[]
+    relatedNotes: string[] | Array<{
+      reference: string
+      relevance?: number
+      connectionType?: 'continuation' | 'update' | 'related'
+      significance?: string
+    }>
+    projectKnowledgeUpdates: string[] | Array<{
+      update: string
+      category?: 'contacts' | 'projects' | 'insights' | 'patterns'
+      confidence?: number
+    }>
   }
   outreachIdeas: Array<{
     contact: string
     topic: string
     purpose: string
+    value?: string
+    timing?: string
+    context?: string
   }>
   structuredData: {
     dates: Array<{
       date: string
       context: string
       type: 'past' | 'future' | 'deadline' | 'meeting' | 'event'
+      importance?: 'high' | 'medium' | 'low'
     }>
     times: Array<{
       time: string
       context: string
       type: 'arrival' | 'departure' | 'meeting' | 'deadline' | 'general'
+      precision?: 'exact' | 'approximate'
     }>
     locations: Array<{
       place: string
       context: string
       type: 'destination' | 'origin' | 'meeting_place' | 'reference'
+      significance?: string
     }>
     numbers: Array<{
       value: string
       context: string
       type: 'quantity' | 'measurement' | 'price' | 'duration' | 'identifier'
+      unit?: string
     }>
     people: Array<{
       name: string
       context: string
       relationship?: string
+      importance?: 'high' | 'medium' | 'low'
     }>
   }
   recordingContext: {
     recordedAt: string
     extractedDate?: string
     timeReferences: string[]
+    contextualClues?: string[]
+  }
+  // Enhanced metadata for analysis quality and tracking
+  analysisMetadata?: {
+    version: string
+    model: string
+    processingTime?: string
+    overallConfidence: number
+    complexityScore: number
+    qualityFlags: string[]
+    suggestions: string[]
   }
 }
 
