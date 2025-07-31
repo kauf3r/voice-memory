@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from './AuthProvider'
 import { supabase } from '@/lib/supabase'
 import { useToast } from './ToastProvider'
@@ -45,6 +45,9 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   const maxPins = 10
 
+  // Create a stable ref for the refresh function to break circular dependencies
+  const refreshPinnedTasksRef = useRef<() => Promise<void>>()
+  
   // Fetch pinned tasks from the API
   const refreshPinnedTasks = useCallback(async () => {
     // Early return after hooks are established
@@ -83,6 +86,9 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       setIsLoading(false)
     }
   }, [user])
+  
+  // Update the ref when the callback changes
+  refreshPinnedTasksRef.current = refreshPinnedTasks
 
   // Pin a task with enhanced optimistic updates and conflict resolution
   const pinTask = useCallback(async (taskId: string) => {
@@ -283,7 +289,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
 
       // The real-time subscription will handle syncing the final order
       // But we may want to refresh to ensure consistency
-      setTimeout(() => refreshPinnedTasks(), 1000)
+      setTimeout(() => refreshPinnedTasksRef.current?.(), 1000)
 
     } catch (err) {
       // Rollback optimistic update on error
@@ -295,7 +301,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast(errorMessage, 'error')
       throw err
     }
-  }, [user, pinnedTaskIds, showToast, refreshPinnedTasks])
+  }, [user, pinnedTaskIds, showToast])
 
   // Check if a task is pinned
   const isPinned = useCallback((taskId: string) => {
@@ -305,7 +311,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
   // Load pinned tasks when user changes
   useEffect(() => {
     refreshPinnedTasks()
-  }, [refreshPinnedTasks])
+  }, [user])
 
   // Real-time subscription for pin changes
   useEffect(() => {
@@ -367,7 +373,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
                 case 'UPDATE':
                   // Pin was updated (shouldn't happen often, but handle it)
                   console.log('🔄 Pin updated via real-time')
-                  refreshPinnedTasks()
+                  refreshPinnedTasksRef.current?.()
                   break
                   
                 default:
@@ -412,7 +418,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
         setConnectionStatus('disconnected')
       }
     }
-  }, [user, showToast, refreshPinnedTasks])
+  }, [user, showToast])
 
   const value: PinnedTasksContextType = {
     pinnedTaskIds,
