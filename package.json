@@ -27,7 +27,13 @@
     "process-directly": "tsx scripts/direct-processing.ts",
     "test:production-files": "tsx scripts/test-server-file-production.ts",
     "test:server-files": "tsx scripts/test-server-file-standalone.ts",
-    "test:performance": "tsx scripts/test-performance.ts"
+    "test:performance": "tsx scripts/test-performance.ts",
+    "git:start": "./scripts/git-workflow.sh start",
+    "git:save": "./scripts/git-workflow.sh save",
+    "git:sync": "./scripts/git-workflow.sh sync",
+    "git:status": "./scripts/git-workflow.sh status",
+    "git:clean": "./scripts/git-workflow.sh clean",
+    "setup": "./scripts/setup-dev.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
