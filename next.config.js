@@ -7,10 +7,9 @@ const nextConfig = {
   compress: process.env.NODE_ENV === 'production',
   poweredByHeader: false,
   
-  // Force fresh deployment - cache buster
+  // Auto-generated deployment ID - no manual version bumping needed
   env: {
     DEPLOYMENT_ID: Date.now().toString(),
-    DEPLOYMENT_VERSION: '2025-01-31-enhanced-error-handling-v6',
   },
   
   // Image optimization
