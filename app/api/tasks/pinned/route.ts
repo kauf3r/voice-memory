@@ -49,13 +49,42 @@ export async function GET(request: NextRequest) {
       tokenEnd: '...' + token.substring(token.length - 20)
     })
     
-    // Verify the user
-    console.log('🔐 Attempting to validate token with service client...')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    // Verify the user - handle both service key and anon key scenarios
+    console.log('🔐 Attempting to validate token...')
+    
+    let user = null
+    let authError = null
+    
+    if (process.env.SUPABASE_SERVICE_KEY) {
+      // If we have a service key, use it to validate the token
+      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
+      user = serviceUser
+      authError = serviceError
+    } else {
+      // If using anon key, create a new client with the user's token
+      console.log('📝 Using anon key - creating authenticated client')
+      const authenticatedClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      )
+      
+      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
+      user = anonUser
+      authError = anonError
+    }
+    
     if (authError || !user) {
       console.error('❌ Authentication failed:', {
         error: authError,
-        hasUser: !!user
+        hasUser: !!user,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY
       })
       return NextResponse.json(
         { error: 'Invalid authentication token' },
@@ -65,11 +94,25 @@ export async function GET(request: NextRequest) {
     
     console.log('✅ User authenticated:', {
       userId: user.id,
-      userEmail: user.email
+      userEmail: user.email,
+      authMethod: process.env.SUPABASE_SERVICE_KEY ? 'service' : 'anon'
     })
 
+    // Use the authenticated client for database queries when using anon key
+    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
     // Get all pinned task IDs for the user ordered by pin_order
-    const { data: pins, error: pinsError } = await supabase
+    const { data: pins, error: pinsError } = await dbClient
       .from('task_pins')
       .select('task_id, pinned_at, pin_order')
       .eq('user_id', user.id)

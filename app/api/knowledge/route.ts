@@ -50,13 +50,41 @@ export async function GET(request: NextRequest) {
       process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
     
-    console.log('🔐 Attempting to validate token with service client...')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    console.log('🔐 Attempting to validate token...')
+    
+    let user = null
+    let authError = null
+    
+    if (process.env.SUPABASE_SERVICE_KEY) {
+      // If we have a service key, use it to validate the token
+      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
+      user = serviceUser
+      authError = serviceError
+    } else {
+      // If using anon key, create a new client with the user's token
+      console.log('📝 Using anon key - creating authenticated client')
+      const authenticatedClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      )
+      
+      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
+      user = anonUser
+      authError = anonError
+    }
     
     if (authError || !user) {
       console.error('❌ Authentication failed:', {
         error: authError,
-        hasUser: !!user
+        hasUser: !!user,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY
       })
       return NextResponse.json(
         { error: 'Invalid authentication token' },
@@ -67,12 +95,26 @@ export async function GET(request: NextRequest) {
     console.log('✅ User authenticated:', {
       userId: user.id,
       userEmail: user.email,
-      userRole: user.role
+      userRole: user.role,
+      authMethod: process.env.SUPABASE_SERVICE_KEY ? 'service' : 'anon'
     })
 
+    // Use the authenticated client for database queries when using anon key
+    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
     // Get aggregated knowledge from all processed notes
     console.log('🔍 Querying notes table for user:', user.id)
-    const { data: notes, error: notesError } = await supabase
+    const { data: notes, error: notesError } = await dbClient
       .from('notes')
       .select('id, analysis, transcription, recorded_at, processed_at')
       .eq('user_id', user.id)
@@ -88,7 +130,7 @@ export async function GET(request: NextRequest) {
 
     // Get task completions for this user
     console.log('🔍 Querying task_completions table for user:', user.id)
-    const { data: completions, error: completionsError } = await supabase
+    const { data: completions, error: completionsError } = await dbClient
       .from('task_completions')
       .select('task_id, completed_at, completed_by, notes')
       .eq('user_id', user.id)
@@ -140,7 +182,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get project knowledge record
-    const { data: projectKnowledge, error: knowledgeError } = await supabase
+    const { data: projectKnowledge, error: knowledgeError } = await dbClient
       .from('project_knowledge')
       .select('*')
       .eq('user_id', user.id)
