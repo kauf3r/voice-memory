@@ -12,7 +12,6 @@ import SearchBar from './components/SearchBar'
 import VirtualizedNoteList from './components/VirtualizedNoteList'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
-import { usePerformanceTracking, usePageTransitionTracking } from '@/lib/hooks/usePerformanceTracking'
 import { useMemo, useCallback } from 'react'
 
 // Force dynamic rendering to prevent static generation issues
@@ -21,14 +20,6 @@ export const dynamic = 'force-dynamic'
 export default function Home() {
   const { user, loading: authLoading } = useAuth()
   const { notes, loading: notesLoading, error, totalCount, hasMore, refresh, loadMore } = useNotes()
-  
-  // Performance tracking
-  const { trackAsyncOperation, trackRenderPerformance } = usePerformanceTracking({
-    sampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    debug: process.env.NODE_ENV === 'development'
-  })
-  
-  usePageTransitionTracking()
   
   // Infinite scroll trigger element
   const infiniteScrollRef = useInfiniteScroll(loadMore, hasMore, notesLoading)
@@ -55,18 +46,14 @@ export default function Home() {
     )
   }
 
-  // Optimized event handlers with performance tracking
+  // Optimized event handlers
   const handleUploadComplete = useCallback(async () => {
-    await trackAsyncOperation('upload-complete-refresh', async () => {
-      await refresh()
-    })
-  }, [refresh, trackAsyncOperation])
+    await refresh()
+  }, [refresh])
 
   const handleNoteDelete = useCallback(async () => {
-    await trackAsyncOperation('note-delete-refresh', async () => {
-      await refresh()
-    })
-  }, [refresh, trackAsyncOperation])
+    await refresh()
+  }, [refresh])
 
   // Memoized render function for note cards
   const renderNoteCard = useCallback((note: any, index: number) => (
@@ -195,7 +182,7 @@ export default function Home() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => trackAsyncOperation('load-more-notes', loadMore)}
+                      onClick={loadMore}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
                     >
                       Load More Notes
