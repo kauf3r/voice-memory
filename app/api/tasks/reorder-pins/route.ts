@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-)
-
 // Reorder pinned tasks
 export async function POST(request: NextRequest) {
   try {
     // Get the authorization header
-    const authHeader = request.headers.get('authorization')
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
@@ -20,8 +15,40 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.split(' ')[1]
     
-    // Verify the user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    // Create service client for authentication - fallback to anon key if service key not available
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    
+    // Verify the user - handle both service key and anon key scenarios
+    let user = null
+    let authError = null
+    
+    if (process.env.SUPABASE_SERVICE_KEY) {
+      // If we have a service key, use it to validate the token
+      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
+      user = serviceUser
+      authError = serviceError
+    } else {
+      // If using anon key, create a new client with the user's token
+      const authenticatedClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      )
+      
+      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
+      user = anonUser
+      authError = anonError
+    }
+    
     if (authError || !user) {
       console.error('Auth error:', authError)
       return NextResponse.json(
@@ -49,8 +76,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use the authenticated client for database queries when using anon key
+    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
     // Verify the task is pinned by this user
-    const { data: existingPin, error: pinError } = await supabase
+    const { data: existingPin, error: pinError } = await dbClient
       .from('task_pins')
       .select('id, pin_order')
       .eq('user_id', user.id)
@@ -65,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call the reorder function
-    const { error: reorderError } = await supabase
+    const { error: reorderError } = await dbClient
       .rpc('reorder_pins', {
         p_user_id: user.id,
         p_task_id: taskId,
@@ -81,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get updated pin orders for verification
-    const { data: updatedPins, error: fetchError } = await supabase
+    const { data: updatedPins, error: fetchError } = await dbClient
       .from('task_pins')
       .select('task_id, pin_order')
       .eq('user_id', user.id)
