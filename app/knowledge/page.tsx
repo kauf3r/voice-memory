@@ -7,17 +7,41 @@ import Layout from '../components/Layout'
 import { supabase } from '@/lib/supabase'
 
 interface KnowledgeData {
-  topics: Array<{
-    topic: string
-    count: number
-    notes: Array<{
-      id: string
-      title: string
-      excerpt: string
-    }>
-  }>
-  totalNotes: number
-  totalTopics: number
+  knowledge: {
+    stats: {
+      totalNotes: number
+      totalInsights: number
+      totalTasks: number
+      totalMessages: number
+      totalOutreach: number
+      sentimentDistribution: {
+        positive: number
+        neutral: number
+        negative: number
+      }
+    }
+    content: {
+      recentInsights: string[]
+      topTopics: Record<string, number>
+      keyContacts: Record<string, number>
+      commonTasks: Record<string, number>
+      allTasks: Array<{
+        id: string
+        description: string
+        type: string
+        date: string
+        noteId: string
+        completed: boolean
+      }>
+      sentimentTrends: Array<{date: string, sentiment: string}>
+      knowledgeTimeline: Array<{
+        date: string
+        type: string
+        content: string
+        noteId: string
+      }>
+    }
+  }
 }
 
 function KnowledgePageContent() {
@@ -135,37 +159,95 @@ function KnowledgePageContent() {
     )
   }
 
+  const stats = knowledge?.knowledge?.stats
+  const content = knowledge?.knowledge?.content
+  const topTopics = content?.topTopics || {}
+  const topicEntries = Object.entries(topTopics).sort(([,a], [,b]) => b - a)
+  
   return (
     <Layout>
       <div className="space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Knowledge Base</h1>
           <p className="text-lg text-gray-600">
-            Insights from your {knowledge.totalNotes} voice notes across {knowledge.totalTopics} topics
+            {stats ? `Insights from your ${stats.totalNotes} voice notes with ${stats.totalInsights} key insights` : 'Loading insights...'}
           </p>
         </div>
 
-        <div className="grid gap-6">
-          {knowledge.topics.map((topic, index) => (
-            <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">{topic.topic}</h2>
-                <span className="bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded">
-                  {topic.count} notes
-                </span>
-              </div>
-              
-              <div className="space-y-3">
-                {topic.notes.map((note) => (
-                  <div key={note.id} className="bg-gray-50 rounded-lg p-3">
-                    <h3 className="font-medium text-gray-900 mb-1">{note.title}</h3>
-                    <p className="text-gray-600 text-sm">{note.excerpt}</p>
-                  </div>
-                ))}
-              </div>
+        {/* Stats Overview */}
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="text-2xl font-bold text-gray-900">{stats.totalNotes}</div>
+              <div className="text-sm text-gray-600">Total Notes</div>
             </div>
-          ))}
-        </div>
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="text-2xl font-bold text-gray-900">{stats.totalInsights}</div>
+              <div className="text-sm text-gray-600">Key Insights</div>
+            </div>
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="text-2xl font-bold text-gray-900">{stats.totalTasks}</div>
+              <div className="text-sm text-gray-600">Tasks Created</div>
+            </div>
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="text-2xl font-bold text-gray-900">{topicEntries.length}</div>
+              <div className="text-sm text-gray-600">Topics</div>
+            </div>
+          </div>
+        )}
+
+        {/* Recent Insights */}
+        {content?.recentInsights && content.recentInsights.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Insights</h2>
+            <div className="space-y-3">
+              {content.recentInsights.slice(0, 10).map((insight, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-700">{insight}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Top Topics */}
+        {topicEntries.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Top Topics</h2>
+            <div className="grid gap-3">
+              {topicEntries.slice(0, 10).map(([topic, count], index) => (
+                <div key={index} className="flex justify-between items-center">
+                  <span className="text-gray-700">{topic}</span>
+                  <span className="bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded">
+                    {count} mentions
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent Tasks */}
+        {content?.allTasks && content.allTasks.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Tasks</h2>
+            <div className="space-y-3">
+              {content.allTasks.slice(0, 10).map((task) => (
+                <div key={task.id} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-start justify-between">
+                    <p className="text-gray-700 flex-1">{task.description}</p>
+                    {task.completed && (
+                      <span className="ml-2 text-green-600 text-sm">✓ Completed</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {new Date(task.date).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )
