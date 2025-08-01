@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   console.log('🔍 Knowledge API - GET request started')
   console.log('📊 Environment check:', {
     hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    hasSupabaseServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
     timestamp: new Date().toISOString()
   })
   
@@ -31,42 +31,33 @@ export async function GET(request: NextRequest) {
       )
     }
     
-    const token = authHeader.replace('Bearer ', '')
+    const token = authHeader.split(' ')[1]
     console.log('🎟️ Token analysis:', {
       tokenLength: token.length,
       tokenStart: token.substring(0, 20) + '...',
       tokenEnd: '...' + token.substring(token.length - 20)
     })
     
-    // Create client with the provided token
+    // Create service client for authentication
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
+      process.env.SUPABASE_SERVICE_KEY!
     )
     
-    console.log('🔐 Attempting to validate token with Supabase...')
-    const { data, error: authError } = await supabase.auth.getUser()
+    console.log('🔐 Attempting to validate token with service client...')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     
-    if (authError || !data?.user) {
+    if (authError || !user) {
       console.error('❌ Authentication failed:', {
         error: authError,
-        hasData: !!data,
-        hasUser: !!data?.user
+        hasUser: !!user
       })
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Invalid authentication token' },
         { status: 401 }
       )
     }
     
-    const user = data.user
     console.log('✅ User authenticated:', {
       userId: user.id,
       userEmail: user.email,
