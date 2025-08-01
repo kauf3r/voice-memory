@@ -121,7 +121,10 @@ export function PerformanceMonitor({
         '/api/monitoring',
         '/api/performance', 
         '/api/metrics',
-        '/api/error'
+        '/api/error',
+        '/_next/',
+        '/favicon',
+        '/apple-icon'
       ]
       
       const shouldSkipMonitoring = excludedEndpoints.some(endpoint => urlString.includes(endpoint))
