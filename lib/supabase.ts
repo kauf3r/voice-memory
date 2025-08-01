@@ -15,7 +15,7 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   auth: {
     // Use default localStorage storage
     storageKey: `sb-${supabaseUrl?.split('//')[1]?.split('.')[0] || 'default'}-auth-token`,
-    flowType: 'pkce',
+    flowType: 'implicit', // Use implicit flow for simpler magic link handling
     detectSessionInUrl: true,
     persistSession: true,
     autoRefreshToken: true,

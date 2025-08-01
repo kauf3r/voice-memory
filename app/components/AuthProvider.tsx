@@ -93,12 +93,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('🌐 Using redirect URL:', `${baseUrl}/auth/callback`)
       
+      // Try a simpler approach - let Supabase handle the redirect
       const magicLinkPromise = supabase.auth.signInWithOtp({
         email,
         options: {
           emailRedirectTo: `${baseUrl}/auth/callback`,
-          // Use implicit flow instead of PKCE for simpler handling
           shouldCreateUser: true,
+          data: {
+            email_confirmed: true
+          }
         },
       })
       
