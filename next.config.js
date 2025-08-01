@@ -10,7 +10,7 @@ const nextConfig = {
   // Force fresh deployment - cache buster
   env: {
     DEPLOYMENT_ID: Date.now().toString(),
-    DEPLOYMENT_VERSION: '2025-01-31-simplified-auth-v5',
+    DEPLOYMENT_VERSION: '2025-01-31-enhanced-error-handling-v6',
   },
   
   // Image optimization

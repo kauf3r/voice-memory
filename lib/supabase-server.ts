@@ -82,49 +82,126 @@ export function createServiceClient() {
 
 // Helper to get authenticated user from token in API routes
 export async function getAuthenticatedUser(token: string) {
-  console.log('🔐 Getting authenticated user with token length:', token.length)
+  console.log('🔐 Getting authenticated user with token length:', token?.length || 0)
+  
+  // Validate input
+  if (!token || typeof token !== 'string') {
+    console.error('❌ Invalid token provided')
+    return { 
+      user: null, 
+      error: { message: 'Invalid token provided' } as any,
+      client: null 
+    }
+  }
+  
+  // Check environment variables
+  const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL
+  const hasServiceKey = !!process.env.SUPABASE_SERVICE_KEY
+  const hasAnonKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
   console.log('🔧 Environment check:', {
-    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
-    hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    hasSupabaseUrl,
+    hasServiceKey,
+    hasAnonKey,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 20) + '...'
   })
+  
+  if (!hasSupabaseUrl) {
+    console.error('❌ Missing NEXT_PUBLIC_SUPABASE_URL')
+    return { 
+      user: null, 
+      error: { message: 'Missing Supabase URL configuration' } as any,
+      client: null 
+    }
+  }
+  
+  if (!hasServiceKey && !hasAnonKey) {
+    console.error('❌ Missing both service key and anon key')
+    return { 
+      user: null, 
+      error: { message: 'Missing Supabase key configuration' } as any,
+      client: null 
+    }
+  }
   
   try {
     // If we have a service key, use it for direct authentication
-    if (process.env.SUPABASE_SERVICE_KEY) {
+    if (hasServiceKey) {
       console.log('📝 Using service key authentication')
-      const serviceClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_KEY
-      )
-      
-      const { data: { user }, error } = await serviceClient.auth.getUser(token)
-      console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
-      return { user, error, client: serviceClient }
-    }
-    
-    // Otherwise, create an authenticated client with the user's token
-    console.log('📝 Using anon key with user token authentication')
-    const authenticatedClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
+      try {
+        const serviceClient = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_KEY!
+        )
+        
+        const { data: { user }, error } = await serviceClient.auth.getUser(token)
+        console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
+        
+        if (error) {
+          console.error('🚨 Service key auth failed:', error)
+          // Don't return error immediately, fall back to anon key if available
+          if (!hasAnonKey) {
+            return { user: null, error, client: null }
+          }
+        } else if (user) {
+          return { user, error: null, client: serviceClient }
+        }
+      } catch (serviceException) {
+        console.error('🚨 Service key auth exception:', serviceException)
+        // Fall through to anon key if available
+        if (!hasAnonKey) {
+          return { 
+            user: null, 
+            error: { message: `Service key auth failed: ${serviceException instanceof Error ? serviceException.message : 'Unknown error'}` } as any,
+            client: null 
           }
         }
       }
-    )
+    }
     
-    const { data: { user }, error } = await authenticatedClient.auth.getUser()
-    console.log('🔍 Anon auth result:', { hasUser: !!user, error: error?.message })
-    return { user, error, client: authenticatedClient }
-  } catch (exception) {
-    console.error('❌ Exception in getAuthenticatedUser:', exception)
+    // Use anon key with user token authentication
+    if (hasAnonKey) {
+      console.log('📝 Using anon key with user token authentication')
+      try {
+        const authenticatedClient = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          }
+        )
+        
+        const { data: { user }, error } = await authenticatedClient.auth.getUser()
+        console.log('🔍 Anon auth result:', { hasUser: !!user, error: error?.message })
+        
+        return { user, error, client: authenticatedClient }
+      } catch (anonException) {
+        console.error('🚨 Anon key auth exception:', anonException)
+        return { 
+          user: null, 
+          error: { message: `Anon key auth failed: ${anonException instanceof Error ? anonException.message : 'Unknown error'}` } as any,
+          client: null 
+        }
+      }
+    }
+    
+    // This should never be reached
+    console.error('❌ No authentication method available')
     return { 
       user: null, 
-      error: { message: `Authentication exception: ${exception instanceof Error ? exception.message : 'Unknown error'}` } as any,
+      error: { message: 'No authentication method available' } as any,
+      client: null 
+    }
+    
+  } catch (generalException) {
+    console.error('❌ General exception in getAuthenticatedUser:', generalException)
+    return { 
+      user: null, 
+      error: { message: `Authentication exception: ${generalException instanceof Error ? generalException.message : 'Unknown error'}` } as any,
       client: null 
     }
   }

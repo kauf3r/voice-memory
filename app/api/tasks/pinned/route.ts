@@ -23,12 +23,30 @@ export async function GET(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     
     // Use centralized authentication helper
-    const { user, error: authError, client: dbClient } = await getAuthenticatedUser(token)
+    let authResult
+    try {
+      authResult = await getAuthenticatedUser(token)
+    } catch (helperError) {
+      console.error('🚨 Auth helper threw exception:', helperError)
+      return NextResponse.json(
+        { error: 'Authentication system error' },
+        { status: 500 }
+      )
+    }
+    
+    const { user, error: authError, client: dbClient } = authResult
     
     if (authError || !user || !dbClient) {
-      console.error('❌ Authentication failed:', authError)
+      console.error('❌ Authentication failed:', {
+        error: authError,
+        hasUser: !!user,
+        hasClient: !!dbClient
+      })
       return NextResponse.json(
-        { error: 'Invalid authentication token' },
+        { 
+          error: 'Invalid authentication token',
+          details: authError?.message || 'Authentication failed'
+        },
         { status: 401 }
       )
     }
