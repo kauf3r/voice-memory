@@ -79,3 +79,53 @@ export function createServiceClient() {
     }
   )
 }
+
+// Helper to get authenticated user from token in API routes
+export async function getAuthenticatedUser(token: string) {
+  console.log('🔐 Getting authenticated user with token length:', token.length)
+  console.log('🔧 Environment check:', {
+    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+    hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  })
+  
+  try {
+    // If we have a service key, use it for direct authentication
+    if (process.env.SUPABASE_SERVICE_KEY) {
+      console.log('📝 Using service key authentication')
+      const serviceClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_KEY
+      )
+      
+      const { data: { user }, error } = await serviceClient.auth.getUser(token)
+      console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
+      return { user, error, client: serviceClient }
+    }
+    
+    // Otherwise, create an authenticated client with the user's token
+    console.log('📝 Using anon key with user token authentication')
+    const authenticatedClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
+    const { data: { user }, error } = await authenticatedClient.auth.getUser()
+    console.log('🔍 Anon auth result:', { hasUser: !!user, error: error?.message })
+    return { user, error, client: authenticatedClient }
+  } catch (exception) {
+    console.error('❌ Exception in getAuthenticatedUser:', exception)
+    return { 
+      user: null, 
+      error: { message: `Authentication exception: ${exception instanceof Error ? exception.message : 'Unknown error'}` } as any,
+      client: null 
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -7,32 +7,10 @@ export const dynamic = 'force-dynamic'
 // Get all pinned tasks for the authenticated user
 export async function GET(request: NextRequest) {
   console.log('🔍 Pinned tasks API - GET request started')
-  console.log('📊 Environment check:', {
-    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    hasSupabaseServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
-    hasSupabaseAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    timestamp: new Date().toISOString()
-  })
   
   try {
-    // Check if service key exists, if not use anon key with RLS
-    if (!process.env.SUPABASE_SERVICE_KEY) {
-      console.warn('⚠️ SUPABASE_SERVICE_KEY not found, using anon key with RLS')
-    }
-    
-    // Create service client for authentication - fallback to anon key if service key not available
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-    
     // Get the authorization header
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    console.log('📋 Auth header analysis:', {
-      present: !!authHeader,
-      startsWithBearer: authHeader?.startsWith('Bearer '),
-      length: authHeader?.length || 0
-    })
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log('❌ Missing or invalid Authorization header')
@@ -43,49 +21,12 @@ export async function GET(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1]
-    console.log('🎟️ Token analysis:', {
-      tokenLength: token.length,
-      tokenStart: token.substring(0, 20) + '...',
-      tokenEnd: '...' + token.substring(token.length - 20)
-    })
     
-    // Verify the user - handle both service key and anon key scenarios
-    console.log('🔐 Attempting to validate token...')
+    // Use centralized authentication helper
+    const { user, error: authError, client: dbClient } = await getAuthenticatedUser(token)
     
-    let user = null
-    let authError = null
-    
-    if (process.env.SUPABASE_SERVICE_KEY) {
-      // If we have a service key, use it to validate the token
-      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
-      user = serviceUser
-      authError = serviceError
-    } else {
-      // If using anon key, create a new client with the user's token
-      console.log('📝 Using anon key - creating authenticated client')
-      const authenticatedClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        }
-      )
-      
-      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
-      user = anonUser
-      authError = anonError
-    }
-    
-    if (authError || !user) {
-      console.error('❌ Authentication failed:', {
-        error: authError,
-        hasUser: !!user,
-        hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY
-      })
+    if (authError || !user || !dbClient) {
+      console.error('❌ Authentication failed:', authError)
       return NextResponse.json(
         { error: 'Invalid authentication token' },
         { status: 401 }
@@ -94,22 +35,8 @@ export async function GET(request: NextRequest) {
     
     console.log('✅ User authenticated:', {
       userId: user.id,
-      userEmail: user.email,
-      authMethod: process.env.SUPABASE_SERVICE_KEY ? 'service' : 'anon'
+      userEmail: user.email
     })
-
-    // Use the authenticated client for database queries when using anon key
-    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    )
     
     // Get all pinned task IDs for the user ordered by pin_order
     const { data: pins, error: pinsError } = await dbClient
