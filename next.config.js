@@ -10,7 +10,7 @@ const nextConfig = {
   // Force fresh deployment - cache buster
   env: {
     DEPLOYMENT_ID: Date.now().toString(),
-    DEPLOYMENT_VERSION: '2025-01-31-auth-fix-manual-tokens',
+    DEPLOYMENT_VERSION: '2025-01-31-knowledge-page-fix-v2',
   },
   
   // Image optimization

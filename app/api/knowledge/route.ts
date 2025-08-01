@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   console.log('📊 Environment check:', {
     hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     hasSupabaseServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+    hasSupabaseAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     timestamp: new Date().toISOString()
   })
   
@@ -38,10 +39,15 @@ export async function GET(request: NextRequest) {
       tokenEnd: '...' + token.substring(token.length - 20)
     })
     
-    // Create service client for authentication
+    // Check if service key exists, if not use anon key with RLS
+    if (!process.env.SUPABASE_SERVICE_KEY) {
+      console.warn('⚠️ SUPABASE_SERVICE_KEY not found, using anon key with RLS')
+    }
+    
+    // Create service client for authentication - fallback to anon key if service key not available
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY!
+      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
     
     console.log('🔐 Attempting to validate token with service client...')
