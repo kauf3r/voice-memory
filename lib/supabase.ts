@@ -20,7 +20,7 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     persistSession: true,
     autoRefreshToken: true,
     // Add timeout for auth operations
-    debug: process.env.NODE_ENV === 'development'
+    debug: true // Always debug to see what's happening
   },
   global: {
     headers: {
@@ -28,6 +28,19 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     }
   }
 })
+
+// Force session check on initialization
+if (typeof window !== 'undefined') {
+  supabase.auth.getSession().then(({ data: { session }, error }) => {
+    if (error) {
+      console.error('Initial session check error:', error)
+    } else if (session) {
+      console.log('Session found on initialization:', session.user?.email)
+    } else {
+      console.log('No session found on initialization')
+    }
+  })
+}
 
 // Helper function to manually process auth tokens from URL hash
 export const processUrlTokens = async () => {
