@@ -53,7 +53,8 @@ export function createServerClient() {
         } : undefined,
         autoRefreshToken: false,
         persistSession: false,
-        detectSessionInUrl: false,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
       },
     }
   )
