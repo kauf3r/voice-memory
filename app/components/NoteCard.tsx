@@ -6,7 +6,6 @@ import { useState, memo, useCallback } from 'react'
 import LazyAnalysisView from './LazyAnalysisView'
 import { supabase } from '@/lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
-import { useComponentPerformance } from '@/lib/performance/PerformanceMonitor'
 
 interface NoteCardProps {
   note: Note
@@ -19,7 +18,6 @@ interface NoteCardProps {
 }
 
 function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps) {
-  const { renderCount } = useComponentPerformance('NoteCard')
   const [isExpanded, setIsExpanded] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isRetrying, setIsRetrying] = useState(false)
