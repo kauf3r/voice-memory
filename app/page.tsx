@@ -13,7 +13,6 @@ import VirtualizedNoteList from './components/VirtualizedNoteList'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
 import { useMemo, useCallback, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -22,67 +21,10 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth()
   const { notes, loading: notesLoading, error, totalCount, hasMore, refresh, loadMore } = useNotes()
   
-  // Process magic link tokens immediately on page load
+  // Let AuthProvider handle all authentication - no duplicate token processing needed
   useEffect(() => {
-    // Add global handler for immediate token processing
-    if (typeof window !== 'undefined') {
-      (window as any).processAuthTokens = async () => {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get('access_token')
-        const refreshToken = hashParams.get('refresh_token')
-        
-        if (accessToken && refreshToken) {
-          console.log('🔐 Manual token processing...')
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          })
-          
-          if (error) {
-            console.error('❌ Failed:', error)
-            return false
-          } else {
-            console.log('✅ Success!')
-            window.location.href = window.location.pathname
-            return true
-          }
-        }
-        return false
-      }
-    }
-    
-    const processTokens = async () => {
-      if (typeof window !== 'undefined' && window.location.hash) {
-        console.log('🎯 Direct token processing on home page...')
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get('access_token')
-        const refreshToken = hashParams.get('refresh_token')
-        
-        if (accessToken && refreshToken) {
-          console.log('🔐 Found tokens, setting session directly...')
-          try {
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            })
-            
-            if (error) {
-              console.error('❌ Direct session set failed:', error)
-            } else if (data?.session) {
-              console.log('✅ Direct session set successful!')
-              // Clean up URL
-              window.history.replaceState({}, document.title, window.location.pathname)
-              // Force reload to update UI
-              window.location.reload()
-            }
-          } catch (err) {
-            console.error('❌ Token processing error:', err)
-          }
-        }
-      }
-    }
-    
-    processTokens()
+    // This useEffect is kept for potential future home page initialization
+    // All authentication is now handled by AuthProvider exclusively
   }, [])
   
   // All hooks must be called before any conditional returns
