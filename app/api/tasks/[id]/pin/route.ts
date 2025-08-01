@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-)
-
 // Pin a task
 export async function POST(
   request: NextRequest,
@@ -15,7 +10,7 @@ export async function POST(
     const taskId = params.id
     
     // Get the authorization header
-    const authHeader = request.headers.get('authorization')
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
@@ -25,8 +20,40 @@ export async function POST(
 
     const token = authHeader.split(' ')[1]
     
-    // Verify the user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    // Create service client for authentication - fallback to anon key if service key not available
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    
+    // Verify the user - handle both service key and anon key scenarios
+    let user = null
+    let authError = null
+    
+    if (process.env.SUPABASE_SERVICE_KEY) {
+      // If we have a service key, use it to validate the token
+      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
+      user = serviceUser
+      authError = serviceError
+    } else {
+      // If using anon key, create a new client with the user's token
+      const authenticatedClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      )
+      
+      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
+      user = anonUser
+      authError = anonError
+    }
+    
     if (authError || !user) {
       console.error('Auth error:', authError)
       return NextResponse.json(
@@ -54,8 +81,21 @@ export async function POST(
 
     const noteId = taskIdParts.slice(0, -2).join('-') // Everything except last 2 parts
     
+    // Use the authenticated client for database queries when using anon key
+    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
+    
     // Verify the note exists and belongs to the user
-    const { data: note, error: noteError } = await supabase
+    const { data: note, error: noteError } = await dbClient
       .from('notes')
       .select('id, user_id')
       .eq('id', noteId)
@@ -70,7 +110,7 @@ export async function POST(
     }
 
     // Check current pin count to provide better error messaging
-    const { data: currentPins, error: countError } = await supabase
+    const { data: currentPins, error: countError } = await dbClient
       .from('task_pins')
       .select('id')
       .eq('user_id', user.id)
@@ -96,7 +136,7 @@ export async function POST(
     }
 
     // Insert the pin
-    const { data: pinData, error: pinError } = await supabase
+    const { data: pinData, error: pinError } = await dbClient
       .from('task_pins')
       .insert({
         user_id: user.id,
@@ -149,7 +189,7 @@ export async function DELETE(
     const taskId = params.id
     
     // Get the authorization header
-    const authHeader = request.headers.get('authorization')
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
@@ -159,8 +199,40 @@ export async function DELETE(
 
     const token = authHeader.split(' ')[1]
     
-    // Verify the user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    // Create service client for authentication - fallback to anon key if service key not available
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    
+    // Verify the user - handle both service key and anon key scenarios
+    let user = null
+    let authError = null
+    
+    if (process.env.SUPABASE_SERVICE_KEY) {
+      // If we have a service key, use it to validate the token
+      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
+      user = serviceUser
+      authError = serviceError
+    } else {
+      // If using anon key, create a new client with the user's token
+      const authenticatedClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      )
+      
+      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
+      user = anonUser
+      authError = anonError
+    }
+    
     if (authError || !user) {
       console.error('Auth error:', authError)
       return NextResponse.json(
@@ -176,9 +248,22 @@ export async function DELETE(
         { status: 400 }
       )
     }
+    
+    // Use the authenticated client for database queries when using anon key
+    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    )
 
     // Delete the pin
-    const { data: deletedPin, error: deleteError } = await supabase
+    const { data: deletedPin, error: deleteError } = await dbClient
       .from('task_pins')
       .delete()
       .eq('user_id', user.id)
