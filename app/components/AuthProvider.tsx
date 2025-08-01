@@ -31,6 +31,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Initialize auth with consistent error handling
     const initializeAuth = async () => {
       try {
+        // First check if we have tokens in the URL hash (from magic link)
+        if (typeof window !== 'undefined' && window.location.hash) {
+          console.log('🔍 Checking URL hash for auth tokens...')
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          const accessToken = hashParams.get('access_token')
+          const refreshToken = hashParams.get('refresh_token')
+          
+          if (accessToken && refreshToken) {
+            console.log('✅ Found auth tokens in URL, setting session...')
+            
+            try {
+              const { data, error: setSessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              })
+              
+              if (setSessionError) {
+                console.error('❌ Failed to set session from tokens:', setSessionError)
+              } else if (data?.session) {
+                console.log('✅ Session set successfully from magic link:', data.session.user.id)
+                setUser(data.session.user)
+                
+                // Clean up the URL to remove the tokens
+                window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
+                
+                if (mounted) {
+                  setLoading(false)
+                }
+                return // Exit early since we've set the session
+              }
+            } catch (tokenError) {
+              console.error('❌ Error processing tokens:', tokenError)
+            }
+          }
+        }
+        
+        // If no tokens in URL, check for existing session
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (!mounted) return // Component unmounted, don't update state
