@@ -16,13 +16,31 @@ export default function LoginForm() {
   // Check for error in URL parameters (from auth callback)
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // Check URL search params
       const urlParams = new URLSearchParams(window.location.search)
       const urlError = urlParams.get('error')
+      
+      // Also check hash params (for Supabase errors)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1))
+      const hashError = hashParams.get('error')
+      const hashErrorCode = hashParams.get('error_code')
+      const hashErrorDescription = hashParams.get('error_description')
+      
       if (urlError) {
         const errorMessage = decodeURIComponent(urlError)
         console.log('Auth callback error:', errorMessage)
         setError(errorMessage)
-        // Clear the error from URL after a short delay to ensure it's visible
+      } else if (hashError) {
+        let errorMessage = decodeURIComponent(hashErrorDescription || hashError)
+        if (hashErrorCode === 'otp_expired') {
+          errorMessage = 'The magic link has expired. Please request a new one.'
+        }
+        console.log('Auth error from hash:', errorMessage)
+        setError(errorMessage)
+      }
+      
+      // Clear the error from URL after a short delay
+      if (urlError || hashError) {
         setTimeout(() => {
           window.history.replaceState({}, '', window.location.pathname)
         }, 100)
