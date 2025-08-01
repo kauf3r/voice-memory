@@ -125,39 +125,43 @@ export async function getAuthenticatedUser(token: string) {
   }
   
   try {
-    // If we have a service key, use it for direct authentication
-    if (hasServiceKey) {
-      console.log('📝 Using service key authentication')
-      try {
-        const serviceClient = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_KEY!
-        )
+    // TEMPORARY WORKAROUND: Skip service key authentication due to JWT signature mismatch
+    // This is likely caused by environment variables from different Supabase projects
+    console.log('⚠️ Skipping service key auth due to JWT signature issues, using anon key only')
+    
+    // // If we have a service key, use it for direct authentication
+    // if (hasServiceKey) {
+    //   console.log('📝 Using service key authentication')
+    //   try {
+    //     const serviceClient = createClient(
+    //       process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    //       process.env.SUPABASE_SERVICE_KEY!
+    //     )
         
-        const { data: { user }, error } = await serviceClient.auth.getUser(token)
-        console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
+    //     const { data: { user }, error } = await serviceClient.auth.getUser(token)
+    //     console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
         
-        if (error) {
-          console.error('🚨 Service key auth failed:', error)
-          // Don't return error immediately, fall back to anon key if available
-          if (!hasAnonKey) {
-            return { user: null, error, client: null }
-          }
-        } else if (user) {
-          return { user, error: null, client: serviceClient }
-        }
-      } catch (serviceException) {
-        console.error('🚨 Service key auth exception:', serviceException)
-        // Fall through to anon key if available
-        if (!hasAnonKey) {
-          return { 
-            user: null, 
-            error: { message: `Service key auth failed: ${serviceException instanceof Error ? serviceException.message : 'Unknown error'}` } as any,
-            client: null 
-          }
-        }
-      }
-    }
+    //     if (error) {
+    //       console.error('🚨 Service key auth failed:', error)
+    //       // Don't return error immediately, fall back to anon key if available
+    //       if (!hasAnonKey) {
+    //         return { user: null, error, client: null }
+    //       }
+    //     } else if (user) {
+    //       return { user, error: null, client: serviceClient }
+    //     }
+    //   } catch (serviceException) {
+    //     console.error('🚨 Service key auth exception:', serviceException)
+    //     // Fall through to anon key if available
+    //     if (!hasAnonKey) {
+    //       return { 
+    //         user: null, 
+    //         error: { message: `Service key auth failed: ${serviceException instanceof Error ? serviceException.message : 'Unknown error'}` } as any,
+    //         client: null 
+    //       }
+    //     }
+    //   }
+    // }
     
     // Use anon key with user token authentication
     if (hasAnonKey) {
