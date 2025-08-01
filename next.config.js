@@ -92,7 +92,7 @@ const nextConfig = {
               "style-src-elem 'self' 'unsafe-inline'",
               "img-src 'self' data: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co https://api.openai.com",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com",
               "media-src 'self' blob:",
               "object-src 'none'",
               "base-uri 'self'",
