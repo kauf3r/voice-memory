@@ -1,17 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
 
 // Get all pinned tasks for the authenticated user
 export async function GET(request: NextRequest) {
+  console.log('🔍 Pinned tasks API - GET request started')
+  console.log('📊 Environment check:', {
+    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    hasSupabaseServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+    timestamp: new Date().toISOString()
+  })
+  
   try {
-    const supabase = createServiceClient()
+    // Create service client for authentication
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!
+    )
     
     // Get the authorization header
-    const authHeader = request.headers.get('authorization')
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    console.log('📋 Auth header analysis:', {
+      present: !!authHeader,
+      startsWithBearer: authHeader?.startsWith('Bearer '),
+      length: authHeader?.length || 0
+    })
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ Missing or invalid Authorization header')
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
         { status: 401 }
@@ -19,16 +37,30 @@ export async function GET(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1]
+    console.log('🎟️ Token analysis:', {
+      tokenLength: token.length,
+      tokenStart: token.substring(0, 20) + '...',
+      tokenEnd: '...' + token.substring(token.length - 20)
+    })
     
     // Verify the user
+    console.log('🔐 Attempting to validate token with service client...')
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
-      console.error('Auth error:', authError)
+      console.error('❌ Authentication failed:', {
+        error: authError,
+        hasUser: !!user
+      })
       return NextResponse.json(
         { error: 'Invalid authentication token' },
         { status: 401 }
       )
     }
+    
+    console.log('✅ User authenticated:', {
+      userId: user.id,
+      userEmail: user.email
+    })
 
     // Get all pinned task IDs for the user ordered by pin_order
     const { data: pins, error: pinsError } = await supabase
