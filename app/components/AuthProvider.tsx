@@ -86,10 +86,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => reject(new Error('Magic link request timeout')), 15000) // 15 second timeout
       })
       
+      // Ensure we use the correct production URL for redirect
+      const baseUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://voice-memory-tau.vercel.app'
+        : window.location.origin
+      
+      console.log('🌐 Using redirect URL:', `${baseUrl}/auth/callback`)
+      
       const magicLinkPromise = supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${baseUrl}/auth/callback`,
+          // Use implicit flow instead of PKCE for simpler handling
+          shouldCreateUser: true,
         },
       })
       
