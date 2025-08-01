@@ -10,6 +10,11 @@ export default function AutoAuth() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
+    // Don't show anything if we're in the auth callback process
+    if (typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
+      return
+    }
+
     // Only attempt auto-auth if not already logged in and no existing session
     if (!user && !attempting) {
       // Check if there's already a session before attempting auto-auth
