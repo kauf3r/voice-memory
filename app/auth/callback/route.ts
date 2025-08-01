@@ -91,10 +91,29 @@ export async function GET(request: Request) {
       const supabase = createServerClient()
       console.log('✅ Processing code-based authentication...')
       
-      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+      // For PKCE flow, we need to check if there's a code_verifier in the URL
+      const codeVerifier = requestUrl.searchParams.get('code_verifier')
+      
+      let exchangeResult
+      if (codeVerifier) {
+        console.log('📝 Using code verifier for PKCE flow')
+        exchangeResult = await supabase.auth.exchangeCodeForSession(code, {
+          codeVerifier
+        })
+      } else {
+        console.log('📝 Using standard code exchange (no verifier)')
+        exchangeResult = await supabase.auth.exchangeCodeForSession(code)
+      }
+      
+      const { data, error: exchangeError } = exchangeResult
       
       if (exchangeError) {
         console.error('❌ Failed to exchange code for session:', exchangeError)
+        // If PKCE error, try redirecting to handle client-side
+        if (exchangeError.message.includes('code verifier')) {
+          console.log('🔄 PKCE error detected, redirecting to client-side handler')
+          return NextResponse.redirect(new URL(`/auth/callback#code=${code}`, request.url))
+        }
         return NextResponse.redirect(new URL('/?error=' + encodeURIComponent('Authentication failed: ' + exchangeError.message), request.url))
       }
       
@@ -169,19 +188,24 @@ export async function GET(request: Request) {
     const refreshToken = hashParams.get('refresh_token');
     const error = hashParams.get('error');
     const errorDescription = hashParams.get('error_description');
+    const code = hashParams.get('code') || new URLSearchParams(window.location.search).get('code');
     
-    console.log('Hash params:', { hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken, error });
+    console.log('Hash params:', { hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken, hasCode: !!code, error });
     
     if (error) {
       console.error('❌ Hash-based auth error:', error, errorDescription);
       window.location.href = '/?error=' + encodeURIComponent(errorDescription || error);
-    } else if (accessToken) {
+    } else if (accessToken && refreshToken) {
       console.log('✅ Found hash-based tokens, redirecting to process them...');
       // Convert hash params to query params and redirect back to this route
       const url = new URL('/auth/callback', window.location.origin);
       url.searchParams.set('access_token', accessToken);
-      if (refreshToken) url.searchParams.set('refresh_token', refreshToken);
+      url.searchParams.set('refresh_token', refreshToken);
       window.location.href = url.toString();
+    } else if (code) {
+      console.log('📝 Found auth code, attempting client-side exchange...');
+      // For PKCE flow that failed server-side, try client-side exchange
+      window.location.href = '/';
     } else {
       console.log('ℹ️ No authentication tokens found, redirecting to home');
       window.location.href = '/';

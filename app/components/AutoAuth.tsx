@@ -50,13 +50,16 @@ export default function AutoAuth() {
   // Don't render anything if user is already authenticated or no message
   if (user || !message) return null
 
+  // Only show error messages, not informational ones
+  if (!message.includes('failed') && !message.includes('needed')) return null
+
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
-      <p className="text-blue-800">{message}</p>
+    <div className="bg-red-50 border border-red-200 rounded p-3 text-sm">
+      <p className="text-red-800">{message}</p>
       {message.includes('failed') && (
         <button
           onClick={() => window.location.href = '/test-auth'}
-          className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+          className="mt-2 bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700"
         >
           Manual Authentication
         </button>
