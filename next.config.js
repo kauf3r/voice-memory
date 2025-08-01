@@ -7,6 +7,11 @@ const nextConfig = {
   compress: process.env.NODE_ENV === 'production',
   poweredByHeader: false,
   
+  // Force fresh deployment - cache buster
+  env: {
+    DEPLOYMENT_ID: Date.now().toString(),
+  },
+  
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
