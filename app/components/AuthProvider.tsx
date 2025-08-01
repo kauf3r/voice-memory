@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { supabase, processUrlTokens } from '@/lib/supabase'
+import { AuthDebugger } from '@/lib/auth-debug'
 
 interface AuthContextType {
   user: User | null
@@ -23,72 +24,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Ensure consistent hook execution by not using async in useEffect directly
-    console.log('🔑 Initializing auth...')
+    AuthDebugger.log('Initializing auth...')
+    AuthDebugger.debugUrl()
     
     let mounted = true
     
-    // Initialize auth with consistent error handling
+    // Enhanced auth initialization with manual token processing
     const initializeAuth = async () => {
       try {
-        // First check if we have tokens in the URL hash (from magic link)
-        if (typeof window !== 'undefined' && window.location.hash) {
-          console.log('🔍 Checking URL hash for auth tokens...')
-          const hashParams = new URLSearchParams(window.location.hash.substring(1))
-          const accessToken = hashParams.get('access_token')
-          const refreshToken = hashParams.get('refresh_token')
-          
-          if (accessToken && refreshToken) {
-            console.log('✅ Found auth tokens in URL, setting session...')
-            
-            try {
-              const { data, error: setSessionError } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken
-              })
-              
-              if (setSessionError) {
-                console.error('❌ Failed to set session from tokens:', setSessionError)
-              } else if (data?.session) {
-                console.log('✅ Session set successfully from magic link:', data.session.user.id)
-                setUser(data.session.user)
-                
-                // Clean up the URL to remove the tokens
-                window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
-                
-                if (mounted) {
-                  setLoading(false)
-                }
-                return // Exit early since we've set the session
-              }
-            } catch (tokenError) {
-              console.error('❌ Error processing tokens:', tokenError)
-            }
-          }
+        // First try to process any URL tokens manually
+        const tokenResult = await processUrlTokens()
+        
+        if (!mounted) return // Component unmounted, don't update state
+        
+        if (tokenResult?.session) {
+          AuthDebugger.success('Session set from URL tokens:', tokenResult.session.user.id)
+          setUser(tokenResult.session.user)
+          setLoading(false)
+          return // Exit early since we have a session
         }
         
-        // If no tokens in URL, check for existing session
+        if (tokenResult?.error) {
+          AuthDebugger.error('Token processing failed:', tokenResult.error)
+        }
+        
+        // If no URL tokens or token processing failed, check for existing session
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (!mounted) return // Component unmounted, don't update state
         
         if (error) {
-          console.warn('⚠️ Auth session error:', error.message)
+          AuthDebugger.error('Auth session error:', error)
           setUser(null)
         } else if (session?.user) {
-          console.log('✅ User session found:', session.user.id)
+          AuthDebugger.success('User session found:', session.user.id)
+          AuthDebugger.debugSession(session)
           setUser(session.user)
         } else {
-          console.log('ℹ️ No user session found')
+          AuthDebugger.info('No user session found')
           setUser(null)
         }
       } catch (error) {
         if (!mounted) return
-        console.warn('⚠️ Auth initialization failed:', error.message)
+        AuthDebugger.error('Auth initialization failed:', error)
         setUser(null)
       } finally {
         if (mounted) {
-          console.log('🏁 Auth initialization complete')
+          AuthDebugger.log('Auth initialization complete')
           setLoading(false)
         }
       }
@@ -97,15 +79,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Start initialization
     initializeAuth()
 
-    // Listen for auth changes with consistent state updates  
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
       
-      console.log('🔔 Auth state change:', event, session?.user?.email || 'no user')
+      AuthDebugger.debugAuthState(event, session)
       setUser(session?.user ?? null)
-      setLoading(false) // Always set loading to false on auth state changes
+      
+      // Clean up URL on successful sign in
+      if (event === 'SIGNED_IN' && typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+        AuthDebugger.log('Cleaning auth tokens from URL after sign in')
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
+      }
+      
+      setLoading(false)
     })
 
     return () => {
@@ -116,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = async (email: string) => {
     try {
-      console.log('📧 Sending magic link to:', email)
+      AuthDebugger.log('Sending magic link to:', email)
       
       // Create timeout for the magic link request
       const timeoutPromise = new Promise((_, reject) => {
@@ -128,31 +117,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? 'https://voice-memory-tau.vercel.app'
         : window.location.origin
       
-      console.log('🌐 Using redirect URL:', `${baseUrl}/auth/callback`)
+      AuthDebugger.log('Using redirect URL:', `${baseUrl}/auth/callback`)
       
-      // Try a simpler approach - let Supabase handle the redirect
+      // Send magic link with dedicated callback route
       const magicLinkPromise = supabase.auth.signInWithOtp({
         email,
         options: {
           emailRedirectTo: `${baseUrl}/auth/callback`,
           shouldCreateUser: true,
-          data: {
-            email_confirmed: true
-          }
         },
       })
       
       const { error } = await Promise.race([magicLinkPromise, timeoutPromise]) as any
       
       if (error) {
-        console.error('❌ Magic link error:', error.message)
+        AuthDebugger.error('Magic link error:', error)
       } else {
-        console.log('✅ Magic link sent successfully')
+        AuthDebugger.success('Magic link sent successfully')
       }
       
       return { error }
     } catch (error) {
-      console.error('❌ Magic link request failed:', error)
+      AuthDebugger.error('Magic link request failed:', error)
       return { error: error as Error }
     }
   }
