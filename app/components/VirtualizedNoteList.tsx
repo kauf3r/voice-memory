@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useCallback } from 'react'
 import { Note } from '@/lib/types'
-import { VirtualList } from '@/lib/performance/optimizations'
 
 interface VirtualizedNoteListProps {
   notes: Note[]
@@ -19,10 +18,11 @@ export default function VirtualizedNoteList({
   children,
   itemHeight = 400,
   containerHeight = 600,
-  enableVirtualization = true
+  enableVirtualization = false
 }: VirtualizedNoteListProps) {
   const [showAll, setShowAll] = useState(false)
 
+  // Always call hooks consistently
   const renderItem = useCallback((note: Note, index: number) => {
     return (
       <div key={note.id} className="mb-4">
@@ -31,25 +31,12 @@ export default function VirtualizedNoteList({
     )
   }, [children])
 
-  // Use virtualization for large lists
-  if (enableVirtualization && notes.length > 20 && !showAll) {
-    return (
-      <div className={className}>
-        <VirtualList
-          items={notes}
-          itemHeight={itemHeight}
-          containerHeight={containerHeight}
-          renderItem={renderItem}
-          overscan={3}
-          className="overflow-y-auto"
-        />
-      </div>
-    )
-  }
+  // Calculate display notes
+  const displayNotes = useMemo(() => {
+    return showAll ? notes : notes.slice(0, 50)
+  }, [notes, showAll])
 
-  // For smaller lists or when virtualization is disabled, use simple rendering
-  const displayNotes = showAll ? notes : notes.slice(0, 50)
-
+  // Simple rendering only - disable virtualization to prevent hook issues
   return (
     <div className={className}>
       <div className="space-y-4">
@@ -80,7 +67,7 @@ export default function VirtualizedNoteList({
             className="text-blue-600 hover:text-blue-700 text-sm underline"
             onClick={() => setShowAll(false)}
           >
-            Show Less (Back to Virtual List)
+            Show Less
           </button>
         </div>
       )}

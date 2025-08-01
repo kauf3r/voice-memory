@@ -21,6 +21,7 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth()
   const { notes, loading: notesLoading, error, totalCount, hasMore, refresh, loadMore } = useNotes()
   
+  // All hooks must be called before any conditional returns
   // Infinite scroll trigger element
   const infiniteScrollRef = useInfiniteScroll(loadMore, hasMore, notesLoading)
 
@@ -30,21 +31,6 @@ export default function Home() {
     const processedCount = notes.filter(note => note.processed_at).length
     return { processingCount, processedCount }
   }, [notes])
-
-  if (authLoading) {
-    return <LoadingPage />
-  }
-
-  if (!user) {
-    return (
-      <Layout>
-        <div className="space-y-6">
-          <AutoAuth />
-          <LoginForm />
-        </div>
-      </Layout>
-    )
-  }
 
   // Optimized event handlers
   const handleUploadComplete = useCallback(async () => {
@@ -63,6 +49,22 @@ export default function Home() {
       onDelete={handleNoteDelete}
     />
   ), [handleNoteDelete])
+
+  // Conditional returns after all hooks
+  if (authLoading) {
+    return <LoadingPage />
+  }
+
+  if (!user) {
+    return (
+      <Layout>
+        <div className="space-y-6">
+          <AutoAuth />
+          <LoginForm />
+        </div>
+      </Layout>
+    )
+  }
 
   return (
     <Layout>
