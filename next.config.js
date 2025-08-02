@@ -127,4 +127,4 @@ const nextConfig = {
   // output: 'standalone',
 }
 
-module.exports = nextConfig
+module.exports = nextConfig// Force deployment Fri Aug  1 19:22:26 PDT 2025
