@@ -171,7 +171,7 @@ export async function getAuthenticatedUser(token: string) {
         )
         
         // Try to get user info directly from the token using anon client
-        const { data: { user }, error } = await anonClient.auth.getUser(token)
+        const { data: { user }, error } = await anonClient.auth.getUser()
         console.log('🔍 Anon auth result:', { hasUser: !!user, error: error?.message })
         
         if (error) {
