@@ -57,7 +57,13 @@ function KnowledgePageContent() {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [showTaskPanel, setShowTaskPanel] = useState(false)
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
   const { isPinned, pinTask, unpinTask } = usePinnedTasks()
+
+  // Ensure component is mounted to avoid hydration issues
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -128,7 +134,7 @@ function KnowledgePageContent() {
     setActiveTab('contacts')
   }
 
-  if (authLoading) {
+  if (authLoading || !mounted) {
     return (
       <Layout>
         <div className="flex justify-center items-center h-64">
@@ -205,7 +211,7 @@ function KnowledgePageContent() {
           </div>
           <div className="flex items-center space-x-4">
             <span className="text-sm text-gray-500">
-              Last updated: {new Date().toLocaleDateString()}
+              Last updated: Today
             </span>
             <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
               Export
@@ -352,8 +358,8 @@ function KnowledgePageContent() {
               <div className="bg-white rounded-lg border border-gray-200 p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Knowledge Span</h2>
                 <div className="flex justify-between text-gray-600">
-                  <span>From: {new Date().toLocaleDateString()}</span>
-                  <span>To: {new Date().toLocaleDateString()}</span>
+                  <span>From: First note</span>
+                  <span>To: Latest note</span>
                 </div>
               </div>
             </div>
@@ -442,7 +448,7 @@ function KnowledgePageContent() {
                   content.knowledgeTimeline.map((item, index) => (
                     <div key={index} className="flex space-x-4 pb-4 border-b border-gray-100 last:border-0">
                       <div className="flex-shrink-0 w-24 text-sm text-gray-500">
-                        {new Date(item.date).toLocaleDateString()}
+                        {item.date}
                       </div>
                       <div className="flex-1">
                         <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded mb-2">
