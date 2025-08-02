@@ -40,12 +40,19 @@ export async function GET(request: NextRequest) {
       console.error('❌ Authentication failed:', {
         error: authError,
         hasUser: !!user,
-        hasClient: !!dbClient
+        hasClient: !!dbClient,
+        authErrorMessage: authError?.message,
+        tokenPreview: token.substring(0, 20) + '...'
       })
       return NextResponse.json(
         { 
           error: 'Invalid authentication token',
-          details: authError?.message || 'Authentication failed'
+          details: authError?.message || 'Authentication failed',
+          debug: {
+            hasUser: !!user,
+            hasClient: !!dbClient,
+            tokenLength: token.length
+          }
         },
         { status: 401 }
       )
