@@ -165,12 +165,20 @@ export async function getAuthenticatedUser(token: string) {
     if (hasAnonKey) {
       console.log('📝 Trying anon key with session establishment')
       try {
+        // Create client with token in headers for authentication
         const anonClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          }
         )
         
-        // Try to get user info directly from the token using anon client
+        // Try to get user info - no token parameter needed as it's in headers
         const { data: { user }, error } = await anonClient.auth.getUser()
         console.log('🔍 Anon auth result:', { hasUser: !!user, error: error?.message })
         
@@ -185,20 +193,8 @@ export async function getAuthenticatedUser(token: string) {
         
         if (user) {
           console.log('✅ Anon key authentication successful')
-          // Create authenticated client with the token
-          const authenticatedClient = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-              global: {
-                headers: {
-                  Authorization: `Bearer ${token}`
-                }
-              }
-            }
-          )
-          
-          return { user, error: null, client: authenticatedClient }
+          // Return the already authenticated client
+          return { user, error: null, client: anonClient }
         }
         
         return { 
