@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { ProcessingStats } from '@/lib/types'
-import { useAuth } from '@/lib/hooks/use-auth'
+import { useAuth } from '@/app/components/AuthProvider'
 
 type StatsScope = 'user' | 'global' | 'both'
 
