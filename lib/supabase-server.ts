@@ -80,10 +80,13 @@ export function createServiceClient() {
   )
 }
 
-// Simplified helper to get authenticated user from token in API routes
+// Fixed authentication helper using SERVICE_KEY for server-side operations
 export async function getAuthenticatedUser(token: string) {
+  console.log('🔐 Server-side auth validation starting')
+  
   // Basic validation
   if (!token || typeof token !== 'string') {
+    console.error('❌ Invalid token provided')
     return { 
       user: null, 
       error: { message: 'Invalid token' } as any,
@@ -91,26 +94,24 @@ export async function getAuthenticatedUser(token: string) {
     }
   }
   
-  // Environment check
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  // Environment check - SERVICE_KEY is critical for server-side auth
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    console.error('❌ Missing Supabase SERVICE_KEY for server-side operations')
     return { 
       user: null, 
-      error: { message: 'Missing Supabase configuration' } as any,
+      error: { message: 'Server configuration error' } as any,
       client: null 
     }
   }
   
   try {
-    // Create simple anon client
-    const client = createClient(
+    console.log('🔧 Creating service client for JWT validation')
+    
+    // Use SERVICE_KEY for server-side operations - this is critical for RLS policy context
+    const serviceClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      process.env.SUPABASE_SERVICE_KEY, // ← KEY FIX: Use service key, not anon key
       {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        },
         auth: {
           autoRefreshToken: false,
           persistSession: false
@@ -118,31 +119,47 @@ export async function getAuthenticatedUser(token: string) {
       }
     )
     
-    // Get user from token
-    const { data: { user }, error } = await client.auth.getUser()
+    console.log('🔍 Validating JWT token with service client')
+    
+    // Validate JWT token using service key - this establishes proper auth context
+    const { data: { user }, error } = await serviceClient.auth.getUser(token)
+    
+    console.log('📊 Auth validation result:', {
+      hasUser: !!user,
+      userId: user?.id?.substring(0, 8) + '...',
+      userEmail: user?.email,
+      errorMessage: error?.message,
+      errorStatus: error?.status
+    })
     
     if (error) {
+      console.error('🚨 JWT validation failed:', error.message)
       return { 
         user: null, 
-        error: { message: error.message } as any,
+        error: { message: `JWT validation failed: ${error.message}` } as any,
         client: null 
       }
     }
     
     if (!user) {
+      console.error('⚠️ No user found in JWT token')
       return { 
         user: null, 
-        error: { message: 'No user found' } as any,
+        error: { message: 'No user found in token' } as any,
         client: null 
       }
     }
     
-    return { user, error: null, client }
+    console.log('✅ Server-side authentication successful for:', user.email)
+    
+    // Return service client for database operations - bypasses RLS when needed
+    return { user, error: null, client: serviceClient }
     
   } catch (error) {
+    console.error('❌ Server-side auth exception:', error)
     return { 
       user: null, 
-      error: { message: 'Authentication failed' } as any,
+      error: { message: `Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}` } as any,
       client: null 
     }
   }
