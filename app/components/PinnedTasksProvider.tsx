@@ -89,7 +89,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [user])
+  }, [user?.id])
   
   // Update the ref when the callback changes
   refreshPinnedTasksRef.current = refreshPinnedTasks
@@ -330,8 +330,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast('Tasks reordered', 'success')
 
       // The real-time subscription will handle syncing the final order
-      // But we may want to refresh to ensure consistency
-      setTimeout(() => refreshPinnedTasksRef.current?.(), 1000)
+      // Removed setTimeout refresh to prevent additional refresh cycles
 
     } catch (err) {
       // Rollback optimistic update on error
@@ -353,7 +352,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
   // Load pinned tasks when user changes
   useEffect(() => {
     refreshPinnedTasks()
-  }, [user])
+  }, [user?.id, refreshPinnedTasks])
 
   // Real-time subscription for pin changes
   useEffect(() => {
@@ -415,7 +414,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
                 case 'UPDATE':
                   // Pin was updated (shouldn't happen often, but handle it)
                   console.log('🔄 Pin updated via real-time')
-                  refreshPinnedTasksRef.current?.()
+                  // Removed refreshPinnedTasksRef.current?.() to prevent infinite loop
                   break
                   
                 default:
