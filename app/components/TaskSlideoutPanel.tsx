@@ -197,7 +197,9 @@ export default function TaskSlideoutPanel({
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
+    // Use a consistent format to avoid hydration mismatches
+    const date = new Date(dateString)
+    return date.toISOString().split('T')[0] // Returns YYYY-MM-DD format
   }
 
   return (

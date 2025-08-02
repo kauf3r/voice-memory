@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react'
 import Toast from './Toast'
 
 interface ToastData {
@@ -30,9 +30,10 @@ interface ToastProviderProps {
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastData[]>([])
+  const counterRef = useRef(0)
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info', duration = 3000) => {
-    const id = Date.now().toString()
+    const id = `toast-${++counterRef.current}` // Use counter instead of Date.now() for consistency
     const newToast: ToastData = { id, message, type, duration }
     
     setToasts(prev => [...prev, newToast])
