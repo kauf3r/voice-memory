@@ -125,47 +125,59 @@ export async function getAuthenticatedUser(token: string) {
   }
   
   try {
-    // Try service key authentication first (if available)
-    if (hasServiceKey) {
-      console.log('📝 Trying service key authentication')
-      try {
-        const serviceClient = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_KEY!
-        )
-        
-        // Use service key to validate the JWT token
-        const { data: { user }, error } = await serviceClient.auth.getUser(token)
-        console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
-        
-        if (error) {
-          console.error('🚨 Service key auth failed:', error)
-          // Fall back to anon key if available
-          if (!hasAnonKey) {
-            return { user: null, error, client: null }
-          }
-        } else if (user) {
-          console.log('✅ Service key authentication successful')
-          return { user, error: null, client: serviceClient }
-        }
-      } catch (serviceException) {
-        console.error('🚨 Service key auth exception:', serviceException)
-        // Fall through to anon key if available
-        if (!hasAnonKey) {
-          return { 
-            user: null, 
-            error: { message: `Service key auth failed: ${serviceException instanceof Error ? serviceException.message : 'Unknown error'}` } as any,
-            client: null 
-          }
-        }
-      }
-    }
+    console.log('🔍 Using anon key authentication only (service key disabled for debugging)')
     
-    // Use anon key with proper session establishment
+    // TEMPORARILY DISABLE SERVICE KEY AUTH TO FIX SIGNATURE VALIDATION
+    // Service key authentication can cause JWT signature validation issues
+    // when trying to validate user-issued tokens
+    
+    // if (hasServiceKey) {
+    //   console.log('📝 Trying service key authentication')
+    //   try {
+    //     const serviceClient = createClient(
+    //       process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    //       process.env.SUPABASE_SERVICE_KEY!
+    //     )
+    //     
+    //     // Use service key to validate the JWT token
+    //     const { data: { user }, error } = await serviceClient.auth.getUser(token)
+    //     console.log('🔍 Service auth result:', { hasUser: !!user, error: error?.message })
+    //     
+    //     if (error) {
+    //       console.error('🚨 Service key auth failed:', error)
+    //       // Fall back to anon key if available
+    //       if (!hasAnonKey) {
+    //         return { user: null, error, client: null }
+    //       }
+    //     } else if (user) {
+    //       console.log('✅ Service key authentication successful')
+    //       return { user, error: null, client: serviceClient }
+    //     }
+    //   } catch (serviceException) {
+    //     console.error('🚨 Service key auth exception:', serviceException)
+    //     // Fall through to anon key if available
+    //     if (!hasAnonKey) {
+    //       return { 
+    //         user: null, 
+    //         error: { message: `Service key auth failed: ${serviceException instanceof Error ? serviceException.message : 'Unknown error'}` } as any,
+    //         client: null 
+    //       }
+    //     }
+    //   }
+    // }
+    
+    // Use anon key with proper JWT validation
     if (hasAnonKey) {
-      console.log('📝 Trying anon key with session establishment')
+      console.log('📝 Trying anon key JWT validation')
       try {
-        // Create client with token in headers for authentication
+        console.log('🔧 Token details:', {
+          tokenLength: token.length,
+          tokenStart: token.substring(0, 30) + '...',
+          hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        })
+        
+        // Create anon client with token in headers for authentication
         const anonClient = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -174,16 +186,33 @@ export async function getAuthenticatedUser(token: string) {
               headers: {
                 Authorization: `Bearer ${token}`
               }
+            },
+            auth: {
+              autoRefreshToken: false,
+              persistSession: false
             }
           }
         )
         
+        console.log('🔐 Created anon client, attempting getUser()')
+        
         // Try to get user info - no token parameter needed as it's in headers
         const { data: { user }, error } = await anonClient.auth.getUser()
-        console.log('🔍 Anon auth result:', { hasUser: !!user, error: error?.message })
+        
+        console.log('🔍 Anon auth result:', {
+          hasUser: !!user,
+          userId: user?.id,
+          userEmail: user?.email,
+          errorMessage: error?.message,
+          errorCode: error?.status
+        })
         
         if (error) {
-          console.error('🚨 Anon key auth failed:', error)
+          console.error('🚨 Anon key auth failed:', {
+            message: error.message,
+            status: error.status,
+            tokenPreview: token.substring(0, 50) + '...'
+          })
           return { 
             user: null, 
             error: { message: `Token validation failed: ${error.message}` } as any,
@@ -192,18 +221,23 @@ export async function getAuthenticatedUser(token: string) {
         }
         
         if (user) {
-          console.log('✅ Anon key authentication successful')
+          console.log('✅ Anon key authentication successful for user:', user.email)
           // Return the already authenticated client
           return { user, error: null, client: anonClient }
         }
         
+        console.warn('⚠️ No error but no user found')
         return { 
           user: null, 
           error: { message: 'No user found in token' } as any,
           client: null 
         }
       } catch (anonException) {
-        console.error('🚨 Anon key auth exception:', anonException)
+        console.error('🚨 Anon key auth exception:', {
+          message: anonException instanceof Error ? anonException.message : 'Unknown error',
+          stack: anonException instanceof Error ? anonException.stack : undefined,
+          tokenPreview: token.substring(0, 50) + '...'
+        })
         return { 
           user: null, 
           error: { message: `Anon key auth failed: ${anonException instanceof Error ? anonException.message : 'Unknown error'}` } as any,
