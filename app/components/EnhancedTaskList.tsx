@@ -12,6 +12,8 @@ interface EnhancedTaskListProps {
   onPin: (taskId: string) => Promise<void>
   onUnpin: (taskId: string) => Promise<void>
   onTaskCompletion: (task: VoiceMemoryTask, completed: boolean) => Promise<void>
+  onArchive?: (task: VoiceMemoryTask) => Promise<void>
+  onUnarchive?: (task: VoiceMemoryTask) => Promise<void>
   loadingTasks: Set<string>
   formatDate: (dateString: string) => string
   setFilter: (filter: { type: 'date', value: string }) => void
@@ -25,6 +27,8 @@ export default function EnhancedTaskList({
   onPin,
   onUnpin,
   onTaskCompletion,
+  onArchive,
+  onUnarchive,
   loadingTasks,
   formatDate,
   setFilter,
@@ -256,12 +260,47 @@ export default function EnhancedTaskList({
                   </div>
                   
                   <div className="flex items-center gap-2 ml-4">
-                    <SelectableTaskCard
-                      task={{ ...task, pinned: isPinned(task.id) }}
-                      onPin={onPin}
-                      onUnpin={onUnpin}
+                    {/* Pin/Unpin Button */}
+                    <button
+                      onClick={() => isPinned(task.id) ? onUnpin(task.id) : onPin(task.id)}
                       disabled={loadingTasks.has(task.id)}
-                    />
+                      className={`p-2 rounded-lg transition-colors ${
+                        isPinned(task.id)
+                          ? 'text-yellow-600 bg-yellow-50 hover:bg-yellow-100'
+                          : 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50'
+                      } ${loadingTasks.has(task.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={isPinned(task.id) ? 'Unpin task' : 'Pin task'}
+                    >
+                      {loadingTasks.has(task.id) ? (
+                        <div className="w-4 h-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V5z" />
+                        </svg>
+                      )}
+                    </button>
+                    
+                    {/* Archive Button (simplified for now) */}
+                    {onArchive && (
+                      <button
+                        onClick={() => onArchive(task)}
+                        disabled={loadingTasks.has(task.id)}
+                        className={`p-2 rounded-lg transition-colors text-gray-400 hover:text-orange-600 hover:bg-orange-50 ${
+                          loadingTasks.has(task.id) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                        title="Hide task"
+                      >
+                        {loadingTasks.has(task.id) ? (
+                          <div className="w-4 h-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    
+                    {/* View Source Note Button */}
                     <button
                       onClick={() => setFilter({ type: 'date', value: task.date.split('T')[0] })}
                       className="text-gray-400 hover:text-gray-600 transition-colors"

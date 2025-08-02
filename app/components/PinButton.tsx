@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { VoiceMemoryTask } from '@/lib/types'
+import { usePinnedTasks } from './PinnedTasksProvider'
 
 interface PinButtonProps {
   task: VoiceMemoryTask
@@ -12,13 +13,15 @@ interface PinButtonProps {
 
 export default function PinButton({ task, onPin, onUnpin, disabled = false }: PinButtonProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { isPinned } = usePinnedTasks()
+  const isTaskPinned = isPinned(task.id)
 
   const handleClick = async () => {
     if (disabled || isLoading) return
 
     setIsLoading(true)
     try {
-      if (task.pinned) {
+      if (isTaskPinned) {
         await onUnpin(task.id)
       } else {
         await onPin(task.id)
@@ -40,9 +43,9 @@ export default function PinButton({ task, onPin, onUnpin, disabled = false }: Pi
           ? 'opacity-50 cursor-not-allowed' 
           : 'hover:bg-blue-50 cursor-pointer transform hover:scale-105'
         }
-        ${task.pinned ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500'}
+        ${isTaskPinned ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500'}
       `}
-      title={task.pinned ? 'Unpin task' : 'Pin task to top'}
+      title={isTaskPinned ? 'Unpin task' : 'Pin task to top'}
       data-testid="pin-button"
     >
       {/* Ripple effect on click */}
@@ -55,23 +58,23 @@ export default function PinButton({ task, onPin, onUnpin, disabled = false }: Pi
       <div className={`
         relative text-lg transition-all duration-300 ease-out
         ${isLoading ? 'animate-bounce' : ''}
-        ${task.pinned 
+        ${isTaskPinned 
           ? 'scale-110 rotate-12 drop-shadow-sm' 
           : 'group-hover:scale-125 group-hover:rotate-12 group-hover:drop-shadow-sm'
         }
       `}>
-        {task.pinned ? '📍' : '📌'}
+        {isTaskPinned ? '📍' : '📌'}
       </div>
       
       {/* Success sparkle effect */}
-      {task.pinned && !isLoading && (
+      {isTaskPinned && !isLoading && (
         <div className="absolute -top-1 -right-1 pointer-events-none">
           <div className="w-2 h-2 bg-yellow-400 rounded-full animate-ping opacity-75"></div>
         </div>
       )}
       
       {/* Cork board shadow effect for pinned */}
-      {task.pinned && (
+      {isTaskPinned && (
         <div className="absolute inset-0 rounded-md shadow-inner bg-gradient-to-br from-transparent to-blue-100/30 pointer-events-none" />
       )}
       
