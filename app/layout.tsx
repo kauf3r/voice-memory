@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { AuthProvider } from './components/AuthProvider'
+import { PinnedTasksProvider } from './components/PinnedTasksProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ProcessingStatsProvider } from '@/lib/contexts/ProcessingStatsContext'
 import { ToastProvider } from './components/ToastProvider'
@@ -64,13 +65,15 @@ export default function RootLayout({
       <body style={{ fontFamily: systemFonts }} suppressHydrationWarning={true}>
         <ErrorBoundary>
           <AuthProvider>
-            <ToastProvider>
-              <ProcessingStatsProvider>
-                {children}
-                <AuthDebugInfo />
-                <BetaFeatures />
-              </ProcessingStatsProvider>
-            </ToastProvider>
+            <PinnedTasksProvider>
+              <ToastProvider>
+                <ProcessingStatsProvider>
+                  {children}
+                  <AuthDebugInfo />
+                  <BetaFeatures />
+                </ProcessingStatsProvider>
+              </ToastProvider>
+            </PinnedTasksProvider>
           </AuthProvider>
         </ErrorBoundary>
       </body>
