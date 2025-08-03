@@ -8,13 +8,11 @@ import LazyAnalysisView from './LazyAnalysisView'
 import { useNoteActions, useNoteStatus, useNoteContent } from './hooks'
 
 // Import sub-components
-import { 
-  NoteHeader, 
-  NoteError, 
-  NoteTopic, 
-  NoteStats, 
-  NoteContent 
-} from './NoteCard'
+import NoteHeader from './NoteCard/NoteHeader'
+import NoteError from './NoteCard/NoteError'
+import NoteTopic from './NoteCard/NoteTopic'
+import NoteStats from './NoteCard/NoteStats'
+import NoteContent from './NoteCard/NoteContent'
 
 interface NoteCardProps {
   note: Note
@@ -41,7 +39,8 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
     isProcessing,
     processingAttempts,
     errorSeverity,
-    statusIcon,
+    iconType,
+    getStatusIcon,
     getStatusColor,
     getStatusText,
     getSentimentColor,
@@ -64,7 +63,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
         recordedAt={note.recorded_at}
         durationSeconds={note.duration_seconds}
         processingStartedAt={note.processing_started_at}
-        statusIcon={statusIcon}
+        statusIcon={getStatusIcon()}
         statusText={getStatusText()}
         statusColorClasses={getStatusColor()}
         sentiment={sentiment}
