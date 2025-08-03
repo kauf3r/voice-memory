@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
-import { processingService } from '@/lib/processing-service'
+import { processingService } from '@/lib/processing/ProcessingService'
 import { isAdminUser } from '@/lib/auth-utils'
 
 // In-memory cache for stats

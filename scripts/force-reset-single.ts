@@ -4,7 +4,7 @@
  */
 
 import { createServiceClient } from '../lib/supabase-server'
-import { processingService } from '../lib/processing-service'
+import { processingService } from '../lib/processing/ProcessingService'
 import * as dotenv from 'dotenv'
 
 dotenv.config({ path: '.env.local' })

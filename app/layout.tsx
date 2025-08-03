@@ -65,15 +65,15 @@ export default function RootLayout({
       <body style={{ fontFamily: systemFonts }} suppressHydrationWarning={true}>
         <ErrorBoundary>
           <AuthProvider>
-            <PinnedTasksProvider>
-              <ToastProvider>
+            <ToastProvider>
+              <PinnedTasksProvider>
                 <ProcessingStatsProvider>
                   {children}
                   <AuthDebugInfo />
                   <BetaFeatures />
                 </ProcessingStatsProvider>
-              </ToastProvider>
-            </PinnedTasksProvider>
+              </PinnedTasksProvider>
+            </ToastProvider>
           </AuthProvider>
         </ErrorBoundary>
       </body>

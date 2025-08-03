@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals'
-import { processingService } from '@/lib/processing-service'
+import { processingService } from '@/lib/processing/ProcessingService'
 import { createServiceClient } from '@/lib/supabase-server'
 import { transcribeAudio, analyzeTranscription } from '@/lib/openai'
 import { createServerFileFromBuffer, getFilePathFromUrl, getMimeTypeFromUrl } from '@/lib/storage'

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { createDatabaseService } from '@/lib/database/queries'
+import { CACHE_CONFIGS, getCachedProcessedContent } from '@/lib/cache/response-cache'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -149,14 +150,31 @@ export async function GET(request: NextRequest) {
       pinnedTasks: pinnedCount
     })
     
-    return NextResponse.json({
+    const response = {
       tasks,
       total: tasks.length,
       completed: completedCount,
       pending: tasks.length - completedCount,
       pinned: pinnedCount,
       maxPins: 10
-    })
+    }
+    
+    // Determine last modified date for caching from notes
+    const lastModified = notes && notes.length > 0 
+      ? Math.max(
+          ...notes
+            .filter(n => n.processed_at)
+            .map(n => new Date(n.processed_at).getTime())
+        )
+      : Date.now()
+    
+    // Return cached response with appropriate headers
+    return getCachedProcessedContent(
+      response,
+      new Date(lastModified),
+      CACHE_CONFIGS.TASKS,
+      request.headers
+    )
     
   } catch (error) {
     console.error('❌ Unexpected error in tasks API:', error)

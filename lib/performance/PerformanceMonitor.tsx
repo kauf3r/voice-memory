@@ -379,19 +379,19 @@ export function useComponentPerformance(componentName: string) {
 
 // Hook for measuring async operations
 export function useAsyncPerformance() {
-  return {
-    measureAsync: async <T>(name: string, asyncFn: () => Promise<T>): Promise<T> => {
-      const metric = startCustomMetric(name)
-      try {
-        const result = await asyncFn()
-        const measurement = metric.end()
-        console.log(`⏱️ Async operation ${name}: ${measurement.duration.toFixed(2)}ms`)
-        return result
-      } catch (error) {
-        const measurement = metric.end()
-        console.log(`❌ Failed async operation ${name}: ${measurement.duration.toFixed(2)}ms`)
-        throw error
-      }
+  const measureAsync = async <T,>(name: string, asyncFn: () => Promise<T>): Promise<T> => {
+    const metric = startCustomMetric(name)
+    try {
+      const result = await asyncFn()
+      const measurement = metric.end()
+      console.log(`⏱️ Async operation ${name}: ${measurement.duration.toFixed(2)}ms`)
+      return result
+    } catch (error) {
+      const measurement = metric.end()
+      console.log(`❌ Failed async operation ${name}: ${measurement.duration.toFixed(2)}ms`)
+      throw error
     }
   }
+  
+  return { measureAsync }
 }

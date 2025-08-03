@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { processingService } from '../lib/processing-service'
+import { processingService } from '../lib/processing/ProcessingService'
 import { createServiceClient } from '../lib/supabase-server'
 
 // Load environment variables

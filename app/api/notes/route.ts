@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
+import { CACHE_CONFIGS, getCachedProcessedContent } from '@/lib/cache/response-cache'
 
 export async function GET(request: NextRequest) {
   try {
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
       console.error('Count error:', countError)
     }
 
-    return NextResponse.json({
+    const response = {
       notes,
       pagination: {
         limit,
@@ -92,7 +93,22 @@ export async function GET(request: NextRequest) {
         total: count || 0,
         hasMore: (count || 0) > offset + limit
       }
-    })
+    }
+    
+    // Determine last modified date for caching
+    const lastModified = notes && notes.length > 0 
+      ? Math.max(
+          ...notes.map(n => new Date(n.updated_at || n.recorded_at).getTime())
+        )
+      : Date.now()
+    
+    // Return cached response with appropriate headers
+    return getCachedProcessedContent(
+      response,
+      new Date(lastModified),
+      CACHE_CONFIGS.NOTES,
+      request.headers
+    )
 
   } catch (error) {
     console.error('API error:', error)
