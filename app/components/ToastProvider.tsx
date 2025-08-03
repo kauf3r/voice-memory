@@ -19,6 +19,12 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined)
 export function useToast() {
   const context = useContext(ToastContext)
   if (context === undefined) {
+    // During build/SSR, return a no-op function instead of throwing
+    if (typeof window === 'undefined') {
+      return {
+        showToast: () => {} // No-op for server-side rendering
+      }
+    }
     throw new Error('useToast must be used within a ToastProvider')
   }
   return context
