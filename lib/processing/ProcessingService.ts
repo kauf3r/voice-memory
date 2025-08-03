@@ -30,7 +30,7 @@ import { CircuitBreakerService } from './CircuitBreakerService'
 // Import utilities
 import { createDatabaseService } from '../database/queries'
 import { hasErrorTracking } from '../migration-checker'
-import { getConfig, getSection } from '../config'
+import { getConfig, getSection } from '../config/index'
 import { PerformanceMetricsTracker } from '../monitoring/PerformanceMetricsTracker'
 import { BackgroundJobProcessor } from '../optimization/BackgroundJobProcessor'
 

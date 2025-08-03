@@ -5,7 +5,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '../supabase-server'
 import { createDatabaseService, validateDatabaseSchema } from '../database/queries'
-import { getSection } from '../config'
+import { getSection } from '../config/index'
 
 export interface DatabaseHealthMetrics {
   status: 'healthy' | 'degraded' | 'unhealthy' | 'critical'

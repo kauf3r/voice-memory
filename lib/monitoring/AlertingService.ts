@@ -2,7 +2,7 @@
  * Real-time Alerting Service - Comprehensive alert management and notification system
  */
 
-import { getSection } from '../config'
+import { getSection } from '../config/index'
 import { DatabaseAlert } from './DatabaseHealthMonitor'
 import { PerformanceAlert } from './PerformanceMetricsTracker'
 

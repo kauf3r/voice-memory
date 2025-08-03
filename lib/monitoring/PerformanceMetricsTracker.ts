@@ -3,7 +3,7 @@
  */
 
 import { ProcessingMetrics, ProcessingStage } from '../processing/interfaces'
-import { getSection } from '../config'
+import { getSection } from '../config/index'
 
 export interface DetailedProcessingMetrics extends ProcessingMetrics {
   noteId: string

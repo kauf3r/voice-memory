@@ -3,7 +3,7 @@
  */
 
 import { ProcessingService } from '../processing/ProcessingService'
-import { getSection } from '../config'
+import { getSection } from '../config/index'
 import { createServiceClient } from '../supabase-server'
 import { createDatabaseService } from '../database/queries'
 
