@@ -26,7 +26,7 @@ export function useNoteStatus(note: Note) {
       }
     }
 
-    const getStatusIcon = () => {
+    const statusIcon = (() => {
       if (note.error_message) {
         return (
           <svg className="h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -61,7 +61,7 @@ export function useNoteStatus(note: Note) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       )
-    }
+    })()
 
     const getStatusColor = () => {
       // Has error message = failed
@@ -138,7 +138,7 @@ export function useNoteStatus(note: Note) {
       isProcessing,
       processingAttempts,
       errorSeverity,
-      getStatusIcon,
+      statusIcon,
       getStatusColor,
       getStatusText,
       getSentimentColor,
