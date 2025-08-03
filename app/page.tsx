@@ -10,6 +10,7 @@ import NoteCard from './components/NoteCard'
 import { ProcessingStatus } from './components/ProcessingStatus'
 import SearchBar from './components/SearchBar'
 import VirtualizedNoteList from './components/VirtualizedNoteList'
+import ConnectionStatusIndicator from './components/ConnectionStatusIndicator'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
 import { useMemo, useCallback, useEffect } from 'react'
@@ -141,15 +142,18 @@ export default function Home() {
         <div>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Recent Notes</h2>
-            {notes.length > 0 && (
-              <button
-                onClick={refresh}
-                disabled={notesLoading}
-                className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
-              >
-                Refresh
-              </button>
-            )}
+            <div className="flex items-center gap-4">
+              <ConnectionStatusIndicator showLabel={true} />
+              {notes.length > 0 && (
+                <button
+                  onClick={refresh}
+                  disabled={notesLoading}
+                  className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                >
+                  Refresh
+                </button>
+              )}
+            </div>
           </div>
 
           {error && (

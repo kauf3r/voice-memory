@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { ProcessingStats } from '@/lib/types'
 import { useAuth } from '@/app/components/AuthProvider'
+import { supabase } from '@/lib/supabase'
 
 type StatsScope = 'user' | 'global' | 'both'
 
@@ -51,7 +52,7 @@ interface Subscription {
 }
 
 export function ProcessingStatsProvider({ children }: ProcessingStatsProviderProps) {
-  const { user, getAccessToken } = useAuth()
+  const { user } = useAuth()
   
   const [state, setState] = useState<ProcessingStatsState>({
     data: { user: null, global: null, both: null },
@@ -65,19 +66,16 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
   const intervals = useRef<Map<StatsScope, NodeJS.Timeout>>(new Map())
   const abortControllers = useRef<Map<StatsScope, AbortController>>(new Map())
   
-  // Store current user and getAccessToken in refs to avoid dependency issues
+  // Store current user in ref to avoid dependency issues
   const userRef = useRef(user)
-  const getAccessTokenRef = useRef(getAccessToken)
   
-  // Update refs when values change
+  // Update ref when user changes
   useEffect(() => {
     userRef.current = user
-    getAccessTokenRef.current = getAccessToken
-  }, [user, getAccessToken])
+  }, [user])
 
   const fetchStats = useCallback(async (scope: StatsScope, showLoading = true) => {
     const currentUser = userRef.current
-    const currentGetAccessToken = getAccessTokenRef.current
     
     if (!currentUser) {
       setState(prev => ({
@@ -110,13 +108,13 @@ export function ProcessingStatsProvider({ children }: ProcessingStatsProviderPro
       const controller = new AbortController()
       abortControllers.current.set(scope, controller)
 
-      const token = await currentGetAccessToken()
+      const { data: { session } } = await supabase.auth.getSession()
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       }
 
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
       }
 
       const url = new URL('/api/stats', window.location.origin)

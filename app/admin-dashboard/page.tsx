@@ -4,7 +4,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
-import { useAuth } from '@/lib/hooks/use-auth'
+import { useAuth } from '@/app/components/AuthProvider'
 import { useRouter } from 'next/navigation'
 import { ProcessingMetricsSummary } from '@/app/components/ProcessingMetricsSummary'
 import { CircuitBreakerStatus } from '@/app/components/CircuitBreakerStatus'
@@ -93,6 +93,7 @@ export default function AdminDashboard() {
                 </label>
                 <input
                   id="auto-refresh"
+                  name="auto-refresh"
                   type="checkbox"
                   checked={autoRefresh}
                   onChange={(e) => setAutoRefresh(e.target.checked)}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { createDatabaseService } from '@/lib/database/queries'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -40,23 +41,26 @@ export async function GET(request: NextRequest) {
     
     console.log('✅ User authenticated:', { userId: user.id, email: user.email })
     
-    // Optimized query: Fetch tasks from voice_notes where analysis contains tasks
-    // Using proper Supabase query optimization
-    const { data: notes, error: notesError } = await dbClient
-      .from('voice_notes')
-      .select('id, user_id, analysis, processed_at')
-      .eq('user_id', user.id)
-      .not('analysis', 'is', null)
-      .order('processed_at', { ascending: false })
-      .limit(100) // Add reasonable limit for performance
+    // Create database service instance with authenticated client
+    const dbService = createDatabaseService(dbClient)
     
-    if (notesError) {
-      console.error('❌ Error fetching notes:', notesError)
+    // Fetch notes with analysis using abstracted database layer
+    const notesResult = await dbService.getNotesByUser(user.id, {
+      hasAnalysis: true,
+      orderBy: 'processed_at',
+      ascending: false,
+      limit: 100
+    })
+    
+    if (!notesResult.success) {
+      console.error('❌ Error fetching notes:', notesResult.error)
       return NextResponse.json(
-        { error: 'Failed to fetch notes' },
+        { error: notesResult.error || 'Failed to fetch notes' },
         { status: 500 }
       )
     }
+    
+    const notes = notesResult.data || []
     
     // Extract tasks from analysis with improved error handling
     const tasks: any[] = []
@@ -93,45 +97,41 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Optimized completion status query using single batch request
+    // Fetch task states using abstracted database layer
     if (tasks.length > 0) {
       const taskIds = tasks.map(t => t.id)
-      const { data: completions, error: completionsError } = await dbClient
-        .from('task_completions')
-        .select('task_id, completed_at, completed_by')
-        .eq('user_id', user.id)
-        .in('task_id', taskIds)
+      const taskStatesResult = await dbService.getTaskStatesByUser(user.id, taskIds)
       
-      if (completionsError) {
-        console.warn('⚠️ Error fetching task completions:', completionsError)
-      } else if (completions) {
-        // Create completion lookup map for O(1) access
-        const completionMap = new Map(completions.map(c => [c.task_id, c]))
+      if (!taskStatesResult.success) {
+        console.warn('⚠️ Error fetching task states:', taskStatesResult.error)
+      } else {
+        const taskStates = taskStatesResult.data || []
+        // Create state lookup map for O(1) access
+        const stateMap = new Map(taskStates.map(s => [s.task_id, s]))
         
-        // Apply completion status efficiently
+        // Apply task state efficiently
         tasks.forEach(task => {
-          const completion = completionMap.get(task.id)
-          if (completion) {
-            task.completed = true
-            task.completedAt = completion.completed_at
-            task.completedBy = completion.completed_by
+          const state = stateMap.get(task.id)
+          if (state) {
+            task.completed = state.completed
+            task.completedAt = state.completed_at
           }
         })
       }
     }
     
-    // Get pin status for tasks in a single query
+    // Get pin status for tasks using abstracted database layer
     let pinnedTaskIds: string[] = []
     if (tasks.length > 0) {
       const taskIds = tasks.map(t => t.id)
-      const { data: pins, error: pinsError } = await dbClient
-        .from('task_pins')
-        .select('task_id')
-        .eq('user_id', user.id)
-        .in('task_id', taskIds)
+      const pinnedTasksResult = await dbService.getPinnedTasksByUser(user.id)
       
-      if (!pinsError && pins) {
-        pinnedTaskIds = pins.map(p => p.task_id)
+      if (pinnedTasksResult.success) {
+        const pinnedTasks = pinnedTasksResult.data || []
+        // Filter to only include tasks that are in our current task list
+        pinnedTaskIds = pinnedTasks
+          .filter(pin => taskIds.includes(pin.task_id))
+          .map(pin => pin.task_id)
       }
     }
     

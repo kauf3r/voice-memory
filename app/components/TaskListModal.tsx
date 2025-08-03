@@ -16,7 +16,7 @@ interface TaskListModalProps {
 
 export default function TaskListModal({ isOpen, onClose, initialTasks }: TaskListModalProps) {
   const { user } = useAuth()
-  const { pinTask, unpinTask } = usePinnedTasks()
+  const { pinTask, unpinTask, isPinned } = usePinnedTasks()
   const { showToast } = useToast()
   const [tasks, setTasks] = useState<VoiceMemoryTask[]>(initialTasks || [])
   const [loading, setLoading] = useState(!initialTasks)
@@ -39,7 +39,7 @@ export default function TaskListModal({ isOpen, onClose, initialTasks }: TaskLis
         throw new Error('No valid session')
       }
 
-      const response = await fetch('/api/tasks 2', {
+      const response = await fetch('/api/tasks', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
@@ -70,13 +70,23 @@ export default function TaskListModal({ isOpen, onClose, initialTasks }: TaskLis
         throw new Error('No valid session')
       }
 
-      const response = await fetch(`/api/tasks 2/${task.id}/complete`, {
-        method: 'POST',
+      const encodedTaskId = encodeURIComponent(task.id)
+      
+      console.log('🎯 [TASK-LIST-MODAL] Attempting task completion:', {
+        taskId: task.id,
+        encodedTaskId,
+        completed,
+        method: completed ? 'POST' : 'DELETE',
+        component: 'TaskListModal.tsx',
+        endpoint: `/api/tasks/${encodedTaskId}/complete`
+      })
+      
+      const response = await fetch(`/api/tasks/${encodedTaskId}/complete`, {
+        method: completed ? 'POST' : 'DELETE',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ completed })
+        }
       })
 
       if (!response.ok) {
@@ -94,7 +104,7 @@ export default function TaskListModal({ isOpen, onClose, initialTasks }: TaskLis
       )
 
       // Auto-unpin if enabled and task is completed
-      if (completed && autoUnpinOnComplete && usePinnedTasks().isPinned(task.id)) {
+      if (completed && autoUnpinOnComplete && isPinned(task.id)) {
         await unpinTask(task.id)
       }
     } catch (error) {

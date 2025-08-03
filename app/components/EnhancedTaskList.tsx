@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, memo } from 'react'
 import { VoiceMemoryTask } from '@/lib/types'
 import PinnedTasksSection from './PinnedTasksSection'
 import BulkTaskActions from './BulkTaskActions'
 import SelectableTaskCard from './SelectableTaskCard'
 import { usePinnedTasks } from './PinnedTasksProvider'
+import { AccessibleCheckbox } from './ui/AccessibleCheckbox'
 
 interface EnhancedTaskListProps {
   tasks: VoiceMemoryTask[]
@@ -40,18 +41,32 @@ export default function EnhancedTaskList({
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
   const [bulkSelectionMode, setBulkSelectionMode] = useState(false)
 
-  // Separate pinned and unpinned tasks
-  const pinnedTasks = tasks.filter(task => isPinned(task.id))
-  const unpinnedTasks = tasks.filter(task => !isPinned(task.id))
+  // Memoize task separation and filtering for performance
+  const { pinnedTasks, unpinnedTasks } = useMemo(() => {
+    const pinned: VoiceMemoryTask[] = []
+    const unpinned: VoiceMemoryTask[] = []
+    
+    tasks.forEach(task => {
+      if (isPinned(task.id)) {
+        pinned.push(task)
+      } else {
+        unpinned.push(task)
+      }
+    })
+    
+    return { pinnedTasks: pinned, unpinnedTasks: unpinned }
+  }, [tasks, isPinned])
 
-  // Filter unpinned tasks based on current filter
-  const filteredUnpinnedTasks = unpinnedTasks.filter(task => {
-    if (taskFilter === 'all') return true
-    if (taskFilter === 'completed') return task.completed
-    if (taskFilter === 'myTasks') return task.type === 'myTasks' && !task.completed
-    if (taskFilter === 'delegatedTasks') return task.type === 'delegatedTasks' && !task.completed
-    return task.type === taskFilter
-  })
+  // Memoize filtered tasks based on current filter
+  const filteredUnpinnedTasks = useMemo(() => {
+    return unpinnedTasks.filter(task => {
+      if (taskFilter === 'all') return true
+      if (taskFilter === 'completed') return task.completed
+      if (taskFilter === 'myTasks') return task.type === 'myTasks' && !task.completed
+      if (taskFilter === 'delegatedTasks') return task.type === 'delegatedTasks' && !task.completed
+      return task.type === taskFilter
+    })
+  }, [unpinnedTasks, taskFilter])
 
   // Toggle bulk selection mode
   const toggleBulkMode = useCallback(() => {
@@ -80,8 +95,11 @@ export default function EnhancedTaskList({
     setSelectedTaskIds(taskIds)
   }, [])
 
-  // Get all available tasks for bulk operations (both pinned and filtered unpinned)
-  const allAvailableTasks = [...pinnedTasks, ...filteredUnpinnedTasks]
+  // Memoize all available tasks for bulk operations
+  const allAvailableTasks = useMemo(() => 
+    [...pinnedTasks, ...filteredUnpinnedTasks],
+    [pinnedTasks, filteredUnpinnedTasks]
+  )
 
   return (
     <div className="space-y-6">
@@ -186,12 +204,12 @@ export default function EnhancedTaskList({
                   <div className="flex items-start gap-3 flex-1">
                     {/* Completion Checkbox */}
                     <div className="pt-1">
-                      <input
-                        type="checkbox"
+                      <AccessibleCheckbox
                         checked={task.completed}
-                        onChange={(e) => onTaskCompletion(task, e.target.checked)}
+                        onChange={(checked) => onTaskCompletion(task, checked)}
                         disabled={loadingTasks.has(task.id)}
-                        className="w-5 h-5 text-green-600 bg-white border-gray-300 rounded focus:ring-green-500 focus:ring-2 disabled:opacity-50"
+                        taskId={task.id}
+                        taskText={task.text}
                       />
                     </div>
                     

@@ -45,12 +45,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   const maxPins = 10
 
-  // Create stable refs to break circular dependencies
-  const refreshPinnedTasksRef = useRef<() => Promise<void>>()
-  const pinnedTaskIdsRef = useRef<string[]>([])
-  
-  // Update ref when pinnedTaskIds changes
-  pinnedTaskIdsRef.current = pinnedTaskIds
+  // Remove circular dependency by using state directly
   
   // Fetch pinned tasks from the API
   const refreshPinnedTasks = useCallback(async () => {
@@ -91,8 +86,6 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     }
   }, [user?.id])
   
-  // Update the ref when the callback changes
-  refreshPinnedTasksRef.current = refreshPinnedTasks
 
   // Pin a task with enhanced optimistic updates and conflict resolution
   const pinTask = useCallback(async (taskId: string) => {
@@ -344,19 +337,23 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     }
   }, [user, showToast])
 
-  // Check if a task is pinned - use ref to avoid circular dependency
+  // Check if a task is pinned
   const isPinned = useCallback((taskId: string) => {
-    return pinnedTaskIdsRef.current.includes(taskId)
-  }, [])
+    return pinnedTaskIds.includes(taskId)
+  }, [pinnedTaskIds])
 
   // Load pinned tasks when user changes
   useEffect(() => {
     refreshPinnedTasks()
   }, [user?.id, refreshPinnedTasks])
 
-  // Real-time subscription for pin changes
+  // Real-time subscription for pin changes with retry logic
   useEffect(() => {
     let subscription: any = null
+    let retryTimeout: NodeJS.Timeout | null = null
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
+    const baseRetryDelay = 1000 // Start with 1 second
     
     // Early return after state setup
     if (!user) {
@@ -364,14 +361,19 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       return
     }
 
-    setConnectionStatus('connecting')
-
-    const setupRealtimeSubscription = async () => {
+    const setupRealtimeSubscription = async (attempt = 0) => {
       try {
-        console.log('🔄 Setting up real-time pin subscription...')
+        setConnectionStatus('connecting')
+        console.log(`🔄 Setting up real-time pin subscription (attempt ${attempt + 1}/${maxReconnectAttempts + 1})...`)
+        
+        // Clean up any existing subscription first
+        if (subscription) {
+          supabase.removeChannel(subscription)
+          subscription = null
+        }
         
         subscription = supabase
-          .channel('task_pins_changes')
+          .channel(`task_pins_changes_${Date.now()}`) // Unique channel name to avoid conflicts
           .on(
             'postgres_changes',
             {
@@ -383,6 +385,8 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
             (payload) => {
               console.log('📌 Real-time pin change detected:', payload)
               setLastSyncTime(new Date())
+              setError(null) // Clear any previous errors on successful data
+              reconnectAttempts = 0 // Reset retry count on successful message
               
               // Handle different types of changes
               switch (payload.eventType) {
@@ -412,9 +416,10 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
                   break
                   
                 case 'UPDATE':
-                  // Pin was updated (shouldn't happen often, but handle it)
+                  // Pin was updated (order changes, etc.)
                   console.log('🔄 Pin updated via real-time')
-                  // Removed refreshPinnedTasksRef.current?.() to prevent infinite loop
+                  // Refresh the full list to get the correct order
+                  setTimeout(() => refreshPinnedTasks(), 500) // Debounced refresh
                   break
                   
                 default:
@@ -428,24 +433,66 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
               case 'SUBSCRIBED':
                 setConnectionStatus('connected')
                 setLastSyncTime(new Date())
+                setError(null)
+                reconnectAttempts = 0
                 console.log('✅ Real-time pin updates active')
                 break
               case 'CHANNEL_ERROR':
               case 'TIMED_OUT':
                 setConnectionStatus('error')
-                console.error('❌ Pin subscription error')
-                setError('Real-time updates disconnected')
+                console.error('❌ Pin subscription error, status:', status)
+                setError(`Real-time connection ${status.toLowerCase()}`)
+                
+                // Attempt to reconnect with exponential backoff
+                if (reconnectAttempts < maxReconnectAttempts) {
+                  const retryDelay = baseRetryDelay * Math.pow(2, reconnectAttempts)
+                  console.log(`🔄 Retrying connection in ${retryDelay}ms (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})...`)
+                  
+                  retryTimeout = setTimeout(() => {
+                    reconnectAttempts++
+                    setupRealtimeSubscription(reconnectAttempts)
+                  }, retryDelay)
+                } else {
+                  console.error('❌ Max reconnection attempts reached, switching to polling fallback')
+                  setError('Real-time updates unavailable, using polling')
+                  // TODO: Implement polling fallback
+                }
                 break
               case 'CLOSED':
                 setConnectionStatus('disconnected')
+                console.log('📡 Subscription closed')
+                
+                // Only attempt reconnect if we haven't exceeded max attempts
+                if (reconnectAttempts < maxReconnectAttempts) {
+                  const retryDelay = baseRetryDelay * Math.pow(2, reconnectAttempts)
+                  console.log(`🔄 Connection closed, retrying in ${retryDelay}ms...`)
+                  
+                  retryTimeout = setTimeout(() => {
+                    reconnectAttempts++
+                    setupRealtimeSubscription(reconnectAttempts)
+                  }, retryDelay)
+                }
                 break
               default:
                 setConnectionStatus('connecting')
+                console.log('📡 Connection status:', status)
             }
           })
       } catch (err) {
         console.error('Failed to setup real-time pin subscription:', err)
         setConnectionStatus('error')
+        setError(`Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        
+        // Retry on setup failure
+        if (reconnectAttempts < maxReconnectAttempts) {
+          const retryDelay = baseRetryDelay * Math.pow(2, reconnectAttempts)
+          console.log(`🔄 Setup failed, retrying in ${retryDelay}ms...`)
+          
+          retryTimeout = setTimeout(() => {
+            reconnectAttempts++
+            setupRealtimeSubscription(reconnectAttempts)
+          }, retryDelay)
+        }
       }
     }
 
@@ -453,6 +500,11 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
 
     // Cleanup subscription on unmount or user change
     return () => {
+      if (retryTimeout) {
+        clearTimeout(retryTimeout)
+        retryTimeout = null
+      }
+      
       if (subscription) {
         console.log('🧹 Cleaning up pin subscription')
         supabase.removeChannel(subscription)

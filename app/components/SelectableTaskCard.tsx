@@ -3,6 +3,8 @@
 import { VoiceMemoryTask } from '@/lib/types'
 import PinButton from './PinButton'
 import { usePinnedTasks } from './PinnedTasksProvider'
+import { AccessibleCheckbox } from './ui/AccessibleCheckbox'
+import { generateAccessibleFieldId } from '@/lib/utils/accessibility'
 
 interface SelectableTaskCardProps {
   task: VoiceMemoryTask
@@ -55,10 +57,13 @@ export default function SelectableTaskCard({
         <div className="pt-1 flex-shrink-0">
           <input
             type="checkbox"
+            id={generateAccessibleFieldId('selectablecard', 'select', task.id)}
+            name={generateAccessibleFieldId('selectablecard', 'select', task.id)}
             checked={isSelected}
             onChange={handleSelectionChange}
             className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
             data-testid="task-selection-checkbox"
+            aria-label={`Select task: ${task.text}`}
           />
         </div>
 
@@ -141,13 +146,12 @@ export default function SelectableTaskCard({
             {/* Actions */}
             <div className="flex items-center gap-2 ml-4 flex-shrink-0">
               {/* Completion Toggle */}
-              <input
-                type="checkbox"
+              <AccessibleCheckbox
                 checked={task.completed}
-                onChange={(e) => onTaskCompletion(task, e.target.checked)}
+                onChange={(checked) => onTaskCompletion(task, checked)}
                 disabled={loadingTasks.has(task.id)}
-                className="w-5 h-5 text-green-600 bg-white border-gray-300 rounded focus:ring-green-500 focus:ring-2 disabled:opacity-50"
-                title={task.completed ? 'Mark as incomplete' : 'Mark as complete'}
+                taskId={task.id}
+                taskText={task.text}
               />
 
               {/* Pin Button */}

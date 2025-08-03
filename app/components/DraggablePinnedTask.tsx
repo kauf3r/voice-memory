@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { VoiceMemoryTask } from '@/lib/types'
 import PinButton from './PinButton'
+import { AccessibleCheckbox } from './ui/AccessibleCheckbox'
 
 interface DraggablePinnedTaskProps {
   task: VoiceMemoryTask
@@ -143,12 +144,12 @@ export default function DraggablePinnedTask({
         <div className="flex items-start gap-3 flex-1 ml-6"> {/* Add margin for drag handle */}
           {/* Completion Checkbox */}
           <div className="pt-1">
-            <input
-              type="checkbox"
+            <AccessibleCheckbox
               checked={task.completed}
-              onChange={(e) => onTaskCompletion(task, e.target.checked)}
+              onChange={(checked) => onTaskCompletion(task, checked)}
               disabled={loadingTasks.has(task.id)}
-              className="w-5 h-5 text-green-600 bg-yellow-50 border-yellow-400 rounded focus:ring-green-500 focus:ring-2 disabled:opacity-50"
+              taskId={task.id}
+              taskText={task.text}
             />
           </div>
           

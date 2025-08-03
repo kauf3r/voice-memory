@@ -10,6 +10,18 @@ const nextConfig = {
   // Auto-generated deployment ID - no manual version bumping needed
   env: {
     DEPLOYMENT_ID: Date.now().toString(),
+    CACHE_BUST: Math.random().toString(36).substring(7),
+  },
+  
+  // Disable Fast Refresh to force full reload
+  experimental: {
+    forceSwcTransforms: true,
+  },
+  
+  // Force rebuild by changing webpack config
+  webpack: (config, { isServer }) => {
+    config.cache = false
+    return config
   },
   
   // Image optimization
@@ -25,6 +37,29 @@ const nextConfig = {
   
   // Headers for both development and production
   async headers() {
+    // Add no-cache headers for development to prevent API caching issues
+    if (process.env.NODE_ENV === 'development') {
+      return [
+        {
+          source: '/api/(.*)',
+          headers: [
+            {
+              key: 'Cache-Control',
+              value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            },
+            {
+              key: 'Pragma',
+              value: 'no-cache',
+            },
+            {
+              key: 'Expires',
+              value: '0',
+            },
+          ],
+        },
+      ]
+    }
+    
     return [
       {
         // API routes - no caching for dynamic content
