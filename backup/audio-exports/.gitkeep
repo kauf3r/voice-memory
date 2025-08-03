@@ -1,2 +1,0 @@
-# This file ensures the audio-exports directory is tracked by git
-# Audio files placed in this directory will be ignored by git (see .gitignore)
