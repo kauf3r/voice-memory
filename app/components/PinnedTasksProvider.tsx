@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useAuth } from './AuthProvider'
 import { supabase } from '@/lib/supabase'
 import { useToast } from './ToastProvider'
@@ -38,6 +38,35 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
   // Always call hooks at the top level, regardless of conditions
   const { user } = useAuth()
   const { showToast } = useToast()
+  
+  // Session cache to prevent auth races and multiple getSession calls
+  const sessionCacheRef = useRef<{ session: any; timestamp: number } | null>(null)
+  const SESSION_CACHE_DURATION = 30000 // 30 seconds cache
+  
+  // Centralized auth token getter that uses the AuthProvider's user state
+  const getAuthToken = useCallback(async () => {
+    if (!user) {
+      throw new Error('Authentication required')
+    }
+    
+    const now = Date.now()
+    const cached = sessionCacheRef.current
+    
+    // Use cached session if still valid
+    if (cached && (now - cached.timestamp) < SESSION_CACHE_DURATION && cached.session?.access_token) {
+      return cached.session.access_token
+    }
+    
+    // Get fresh session
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error || !session) {
+      throw new Error('Authentication session expired')
+    }
+    
+    // Cache the session
+    sessionCacheRef.current = { session, timestamp: now }
+    return session.access_token
+  }, [user])
   const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,14 +88,11 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       setIsLoading(true)
       setError(null)
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session) {
-        throw new Error('Authentication required')
-      }
+      const accessToken = await getAuthToken()
 
       const response = await fetch('/api/tasks/pinned', {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${accessToken}`
         }
       })
 
@@ -84,7 +110,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id])
+  }, [user?.id, getAuthToken])
   
 
   // Pin a task with enhanced optimistic updates and conflict resolution
@@ -95,10 +121,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     try {
       setError(null)
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session) {
-        throw new Error('Authentication required')
-      }
+      const accessToken = await getAuthToken()
 
       // Use functional state update to avoid circular dependency
       let shouldProceed = true
@@ -136,7 +159,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       const response = await fetch(`/api/tasks/${taskId}/pin`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${accessToken}`
         }
       })
 
@@ -169,7 +192,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast(errorMsg, 'error')
       throw err
     }
-  }, [user, maxPins, showToast])
+  }, [user, maxPins, showToast, getAuthToken])
 
   // Unpin a task with enhanced optimistic updates and conflict resolution
   const unpinTask = useCallback(async (taskId: string) => {
@@ -179,10 +202,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     try {
       setError(null)
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session) {
-        throw new Error('Authentication required')
-      }
+      const accessToken = await getAuthToken()
 
       // Use functional state update to avoid circular dependency
       let shouldProceed = true
@@ -214,7 +234,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       const response = await fetch(`/api/tasks/${taskId}/pin`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${accessToken}`
         }
       })
 
@@ -246,7 +266,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast(errorMessage, 'error')
       throw err
     }
-  }, [user, showToast])
+  }, [user, showToast, getAuthToken])
 
   // Reorder a pinned task
   const reorderPin = useCallback(async (taskId: string, newIndex: number) => {
@@ -256,10 +276,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
     try {
       setError(null)
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !session) {
-        throw new Error('Authentication required')
-      }
+      const accessToken = await getAuthToken()
 
       // Use functional state update to avoid circular dependency
       let shouldProceed = true
@@ -301,7 +318,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       const response = await fetch('/api/tasks/reorder-pins', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -335,7 +352,7 @@ export function PinnedTasksProvider({ children }: PinnedTasksProviderProps) {
       showToast(errorMessage, 'error')
       throw err
     }
-  }, [user, showToast])
+  }, [user, showToast, getAuthToken])
 
   // Check if a task is pinned
   const isPinned = useCallback((taskId: string) => {

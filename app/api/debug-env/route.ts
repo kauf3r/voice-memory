@@ -5,6 +5,11 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 
 export async function GET() {
+  // Security: Disable debug endpoints in production
+  if (process.env.NODE_ENV === 'production') {
+    return new NextResponse('Not Found', { status: 404 })
+  }
+  
   let supabaseTest = 'not_tested'
   
   try {

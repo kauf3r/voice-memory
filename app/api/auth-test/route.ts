@@ -5,6 +5,11 @@ import { createServerClient } from '@/lib/supabase-server'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  // Security: Disable debug endpoints in production
+  if (process.env.NODE_ENV === 'production') {
+    return new NextResponse('Not Found', { status: 404 })
+  }
+  
   try {
     const authHeader = request.headers.get('authorization')
     console.log('Auth test - header:', authHeader ? 'Present' : 'Missing')

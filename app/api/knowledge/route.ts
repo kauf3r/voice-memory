@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase-server'
+import { TaskStateService } from '@/lib/services/TaskStateService'
 
 // Force dynamic behavior to handle cookies and searchParams
 export const dynamic = 'force-dynamic'
@@ -128,33 +129,38 @@ export async function GET(request: NextRequest) {
       sampleNoteIds: notes?.slice(0, 3).map(n => n.id) || []
     })
 
-    // Get task completions for this user
-    console.log('🔍 Querying task_completions table for user:', user.id)
-    const { data: completions, error: completionsError } = await dbClient
-      .from('task_completions')
-      .select('task_id, completed_at, completed_by, notes')
-      .eq('user_id', user.id)
-
-    console.log('📊 Task completions query result:', {
-      error: completionsError,
-      completionsCount: completions?.length || 0,
-      hasCompletions: !!completions
-    })
-
-    if (completionsError) {
-      console.warn('⚠️ Could not fetch task completions (table may not exist yet):', completionsError.message)
+    // Get task states for this user using TaskStateService
+    console.log('🔍 Querying task_states table for user:', user.id)
+    const taskStateService = new TaskStateService(dbClient)
+    let taskStates = []
+    let taskStatesError = null
+    
+    try {
+      // Get all task states for the user (completed, pinned, etc.)
+      taskStates = await taskStateService.getTaskStates({
+        user_id: user.id
+      })
+      console.log('📊 Task states query result:', {
+        taskStatesCount: taskStates.length,
+        hasTaskStates: !!taskStates
+      })
+    } catch (error) {
+      taskStatesError = error
+      console.warn('⚠️ Could not fetch task states:', error instanceof Error ? error.message : 'Unknown error')
     }
 
-    // Create a completion lookup map
+    // Create a completion lookup map from task states
     const completionMap = new Map()
-    if (completions) {
-      completions.forEach(completion => {
-        completionMap.set(completion.task_id, {
-          completedAt: completion.completed_at,
-          completedBy: completion.completed_by,
-          completionNotes: completion.notes
+    if (taskStates) {
+      taskStates
+        .filter(ts => ts.completed) // Only include completed tasks
+        .forEach(taskState => {
+          completionMap.set(taskState.task_id, {
+            completedAt: taskState.completed_at,
+            completedBy: taskState.completed_by,
+            completionNotes: taskState.completion_notes
+          })
         })
-      })
     }
     console.log('📊 Completion map created with', completionMap.size, 'entries')
 

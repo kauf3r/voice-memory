@@ -4,6 +4,11 @@ import { createClient } from '@supabase/supabase-js'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  // Security: Disable debug endpoints in production
+  if (process.env.NODE_ENV === 'production') {
+    return new NextResponse('Not Found', { status: 404 })
+  }
+  
   console.log('🔍 Debug Auth Production - GET request started')
   
   try {

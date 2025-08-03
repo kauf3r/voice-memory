@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { TaskStateService } from '@/lib/services/TaskStateService'
 
 // Reorder pinned tasks
 export async function POST(request: NextRequest) {
@@ -15,44 +16,12 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.split(' ')[1]
     
-    // Create service client for authentication - fallback to anon key if service key not available
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    // Use centralized authentication
+    const { user, error: authError, client: dbClient } = await getAuthenticatedUser(token)
     
-    // Verify the user - handle both service key and anon key scenarios
-    let user = null
-    let authError = null
-    
-    if (process.env.SUPABASE_SERVICE_KEY) {
-      // If we have a service key, use it to validate the token
-      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
-      user = serviceUser
-      authError = serviceError
-    } else {
-      // If using anon key, create a new client with the user's token
-      const authenticatedClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        }
-      )
-      
-      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
-      user = anonUser
-      authError = anonError
-    }
-    
-    if (authError || !user) {
-      console.error('Auth error:', authError)
+    if (authError || !user || !dbClient) {
       return NextResponse.json(
-        { error: 'Invalid authentication token' },
+        { error: authError?.message || 'Authentication failed' },
         { status: 401 }
       )
     }
@@ -76,69 +45,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use the authenticated client for database queries when using anon key
-    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    )
+    // Use TaskStateService to reorder the task
+    const taskStateService = new TaskStateService(dbClient)
     
-    // Verify the task is pinned by this user
-    const { data: existingPin, error: pinError } = await dbClient
-      .from('task_pins')
-      .select('id, pin_order')
-      .eq('user_id', user.id)
-      .eq('task_id', taskId)
-      .single()
+    try {
+      // Verify the task is pinned by this user first
+      const isPinned = await taskStateService.isTaskPinned(user.id, taskId)
+      
+      if (!isPinned) {
+        return NextResponse.json(
+          { error: 'Task is not pinned or access denied' },
+          { status: 404 }
+        )
+      }
 
-    if (pinError || !existingPin) {
-      return NextResponse.json(
-        { error: 'Task is not pinned or access denied' },
-        { status: 404 }
-      )
-    }
+      // Reorder the pinned task
+      await taskStateService.reorderPinnedTasks(user.id, taskId, newOrder)
 
-    // Call the reorder function
-    const { error: reorderError } = await dbClient
-      .rpc('reorder_pins', {
-        p_user_id: user.id,
-        p_task_id: taskId,
-        p_new_order: newOrder
+      // Get updated pinned tasks for verification
+      const updatedTaskStates = await taskStateService.getPinnedTasks(user.id)
+      const updatedPins = updatedTaskStates.map(ts => ({
+        task_id: ts.task_id,
+        pin_order: ts.pin_order
+      }))
+
+      return NextResponse.json({
+        success: true,
+        message: 'Pins reordered successfully',
+        taskId,
+        newOrder,
+        updatedPins
       })
-
-    if (reorderError) {
-      console.error('Reorder error:', reorderError)
+    } catch (serviceError) {
+      console.error('TaskStateService error:', serviceError)
       return NextResponse.json(
         { error: 'Failed to reorder pins' },
         { status: 500 }
       )
     }
-
-    // Get updated pin orders for verification
-    const { data: updatedPins, error: fetchError } = await dbClient
-      .from('task_pins')
-      .select('task_id, pin_order')
-      .eq('user_id', user.id)
-      .order('pin_order', { ascending: true })
-
-    if (fetchError) {
-      console.error('Fetch updated pins error:', fetchError)
-      // Don't fail the request - reorder likely succeeded
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Pins reordered successfully',
-      taskId,
-      newOrder,
-      updatedPins: updatedPins || []
-    })
 
   } catch (error) {
     console.error('Unexpected error in reorder pins endpoint:', error)

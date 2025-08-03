@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export async function GET() {
+  // Security: Disable debug endpoints in production
+  if (process.env.NODE_ENV === 'production') {
+    return new NextResponse('Not Found', { status: 404 })
+  }
+  
   try {
     // Test with service key directly
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!

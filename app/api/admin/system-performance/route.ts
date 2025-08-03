@@ -6,17 +6,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getUser } from '@/lib/auth-server'
+import { requireAdminUser } from '@/lib/auth-server'
 import { QueryOptimizer } from '@/lib/optimization/QueryOptimizer'
 import { initializeMonitoring, getMonitoringMetrics, getCurrentSystemHealth } from '@/lib/monitoring'
 
 export async function GET(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const url = new URL(request.url)
     const action = url.searchParams.get('action')
@@ -115,6 +112,17 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('System performance API error:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to process system performance request',
@@ -127,11 +135,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const body = await request.json()
     const { action, ...params } = body
@@ -208,6 +213,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Failed to process system performance action:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to process system performance action',
@@ -220,11 +236,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const body = await request.json()
     const { action } = body
@@ -263,6 +276,17 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('Failed to execute system performance maintenance:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to execute system performance maintenance',
