@@ -1,0 +1,32 @@
+{
+  "name": "Voice Memory",
+  "short_name": "VoiceMemory",
+  "description": "Transform voice notes into actionable insights with AI",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "features": [
+    "cross-platform",
+    "fast",
+    "reliable"
+  ],
+  "prefer_related_applications": false
+}
