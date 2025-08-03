@@ -176,6 +176,16 @@ export interface NoteAnalysis {
 export interface ProjectKnowledge {
   id: string
   user_id: string
-  content: Record<string, any>
+  content: KnowledgeContent
   updated_at: string
+}
+
+export interface KnowledgeContent {
+  insights?: string[]
+  learnings?: string[]
+  decisions?: string[]
+  questions?: string[]
+  patterns?: string[]
+  relationships?: string[]
+  [key: string]: unknown
 }

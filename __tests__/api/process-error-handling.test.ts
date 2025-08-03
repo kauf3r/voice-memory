@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server'
 import { POST, PUT } from '@/app/api/process/route'
 import { createServerClient } from '@/lib/supabase-server'
-import { processingService } from '@/lib/processing-service'
+import { processingService } from '@/lib/processing/ProcessingService'
 import { quotaManager } from '@/lib/quota-manager'
 
 // Mock dependencies
 jest.mock('@/lib/supabase-server')
-jest.mock('@/lib/processing-service')
+jest.mock('@/lib/processing/ProcessingService')
 jest.mock('@/lib/quota-manager')
 
 const mockCreateServerClient = createServerClient as jest.MockedFunction<typeof createServerClient>

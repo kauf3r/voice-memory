@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Note } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
+import { createDebouncedHandler, createResilientSubscription, createUpdateMerger } from '@/lib/utils/realtime-subscriptions'
 
 interface UseNotesReturn {
   notes: Note[]
@@ -475,34 +476,82 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     return errorBreakdown
   }, [notes])
 
-  // Enhanced real-time updates using Supabase subscriptions (temporarily disabled)
-  // useEffect(() => {
-  //   if (!notes.length) return
+  // Enhanced real-time updates using Supabase subscriptions with debouncing
+  useEffect(() => {
+    if (!notes.length) return
 
-  //   const subscription = supabase
-  //     .channel('notes_changes')
-  //     .on('postgres_changes', 
-  //       { 
-  //         event: 'UPDATE', 
-  //         schema: 'public', 
-  //         table: 'notes',
-  //         filter: `id=in.(${notes.map(n => n.id).join(',')})`
-  //       }, 
-  //       (payload) => {
-  //         console.log('Real-time note update received:', payload.new)
-  //         setNotes(prev => prev.map(note => 
-  //           note.id === payload.new.id 
-  //             ? { ...note, ...payload.new }
-  //             : note
-  //         ))
-  //       }
-  //     )
-  //     .subscribe()
+    // Create update merger to consolidate multiple updates for the same note
+    const updateMerger = createUpdateMerger<Note>()
+    
+    // Create debounced handler to batch updates
+    const { handler: debouncedUpdate, cleanup } = createDebouncedHandler<Note>(
+      (updates) => {
+        console.log(`Processing ${updates.length} real-time note updates`)
+        
+        setNotes(prev => {
+          const updateMap = new Map(updates.map(update => [update.id, update]))
+          
+          return prev.map(note => {
+            const update = updateMap.get(note.id)
+            return update ? { ...note, ...update } : note
+          })
+        })
+      },
+      {
+        debounceMs: 500, // Wait 500ms before processing updates
+        maxBatchSize: 20, // Process max 20 updates at once
+        onError: (error) => {
+          console.error('Error processing real-time updates:', error)
+          setError(`Real-time sync error: ${error.message}`)
+        }
+      }
+    )
 
-  //   return () => {
-  //     subscription.unsubscribe()
-  //   }
-  // }, [notes.map(n => n.id).join(',')]) // Dependency on note IDs
+    // Create channel with unique name to avoid conflicts
+    const channelName = `notes_changes_${Date.now()}`
+    const channel = supabase.channel(channelName)
+    
+    // Subscribe to changes for current notes only
+    const noteIds = notes.map(n => n.id)
+    
+    channel.on('postgres_changes', 
+      { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'notes',
+        // Use a more efficient filter for note IDs
+        filter: noteIds.length <= 10 
+          ? `id=in.(${noteIds.join(',')})` 
+          : undefined // For large lists, filter client-side instead
+      }, 
+      (payload) => {
+        // Client-side filter for large note lists
+        if (noteIds.length > 10 && !noteIds.includes(payload.new.id)) {
+          return
+        }
+        
+        console.log('Real-time note update received:', payload.new.id)
+        debouncedUpdate(payload.new as Note)
+      }
+    )
+
+    // Create resilient subscription with auto-reconnect
+    const unsubscribe = createResilientSubscription(channel, {
+      maxRetries: 3,
+      retryDelay: 2000,
+      onConnect: () => console.log('✅ Notes real-time subscription connected'),
+      onDisconnect: () => console.log('❌ Notes real-time subscription disconnected'),
+      onError: (error) => {
+        console.error('Notes subscription error:', error)
+        setError(`Real-time connection lost: ${error.message}`)
+      }
+    })
+
+    return () => {
+      cleanup() // Flush any pending updates
+      unsubscribe() // Unsubscribe from channel
+    }
+  }, [notes.length]) // Only re-subscribe when number of notes changes, not on every update
 
   // Initial load and when search or error filter changes
   useEffect(() => {

@@ -1,3 +1,18 @@
+/**
+ * @deprecated This file has been refactored into focused services with dependency injection.
+ * Use './processing/ProcessingService' instead.
+ * 
+ * This file is kept for backward compatibility but will be removed in a future version.
+ * The new architecture provides better separation of concerns, improved testability,
+ * and enhanced maintainability.
+ */
+
+// Re-export the new refactored ProcessingService for backward compatibility
+export { ProcessingService, processingService } from './processing/ProcessingService'
+
+// Legacy implementation below - DO NOT USE
+// ========================================
+
 import { createServiceClient } from './supabase-server'
 import { transcribeAudio, analyzeTranscription } from './openai'
 import { createServerFile, createServerFileFromBuffer, getFilePathFromUrl, getMimeTypeFromUrl } from './storage'
@@ -1089,5 +1104,6 @@ export class ProcessingService {
   }
 }
 
-// Singleton instance
-export const processingService = new ProcessingService()
+// Legacy singleton instance - DO NOT USE
+// Use the export at the top of this file instead which points to the new refactored service
+// export const processingService = new ProcessingService() // DEPRECATED

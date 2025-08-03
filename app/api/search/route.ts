@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
+import { CACHE_CONFIGS, getCachedProcessedContent } from '@/lib/cache/response-cache'
+import type { ExtendedAnalysis } from '@/lib/types/api'
 
 // Force dynamic behavior to handle cookies and searchParams
 export const dynamic = 'force-dynamic'
@@ -144,7 +146,7 @@ export async function GET(request: NextRequest) {
         config: 'english'
       })
 
-    return NextResponse.json({
+    const response = {
       results: uniqueResults,
       total: count || 0,
       query: searchQuery,
@@ -153,7 +155,22 @@ export async function GET(request: NextRequest) {
         offset,
         hasMore: (count || 0) > offset + limit
       }
-    })
+    }
+    
+    // Determine last modified date for caching (search results can be cached for a short time)
+    const lastModified = notes && notes.length > 0 
+      ? Math.max(
+          ...notes.map(n => new Date(n.updated_at || n.recorded_at).getTime())
+        )
+      : Date.now()
+    
+    // Return cached response with appropriate headers
+    return getCachedProcessedContent(
+      response,
+      new Date(lastModified),
+      CACHE_CONFIGS.SEARCH,
+      request.headers
+    )
 
   } catch (error) {
     console.error('Search API error:', error)
@@ -169,7 +186,7 @@ function includesQuery(text: string, query: string): boolean {
   return text.toLowerCase().includes(query.toLowerCase())
 }
 
-function generateTitle(transcription?: string, analysis?: any): string {
+function generateTitle(transcription?: string, analysis?: ExtendedAnalysis): string {
   // Try to get title from analysis primary topic
   if (analysis?.focusTopics?.primary) {
     return analysis.focusTopics.primary
@@ -240,24 +257,24 @@ function calculateRelevanceScore(text: string, query: string): number {
   return score
 }
 
-function searchInAnalysis(analysis: any, query: string): boolean {
+function searchInAnalysis(analysis: ExtendedAnalysis, query: string): boolean {
   const searchableText = JSON.stringify(analysis).toLowerCase()
   return searchableText.includes(query.toLowerCase())
 }
 
-function generateAnalysisSnippet(analysis: any, query: string): string {
+function generateAnalysisSnippet(analysis: ExtendedAnalysis, query: string): string {
   const lowerQuery = query.toLowerCase()
   
   // Search in different analysis sections
   const sections = [
     { name: 'Key Ideas', content: analysis.keyIdeas?.join(' ') },
     { name: 'Tasks', content: analysis.tasks?.myTasks?.join(' ') + ' ' + 
-      analysis.tasks?.delegatedTasks?.map((t: any) => t.task).join(' ') },
-    { name: 'Messages', content: analysis.messagesToDraft?.map((m: any) => 
-      `${m.subject} ${m.body}`).join(' ') },
+      analysis.tasks?.delegatedTasks?.map((t) => typeof t === 'string' ? t : (t as any).task).join(' ') },
+    { name: 'Messages', content: analysis.messagesToDraft?.map((m) => 
+      `${(m as any).subject || ''} ${(m as any).body || (m as any).content || ''}`).join(' ') },
     { name: 'Sentiment', content: analysis.sentiment?.explanation },
-    { name: 'Outreach', content: analysis.outreachIdeas?.map((o: any) => 
-      `${o.contact} ${o.topic} ${o.purpose}`).join(' ') }
+    { name: 'Outreach', content: analysis.outreachIdeas?.map((o) => 
+      `${(o as any).contact || (o as any).person || ''} ${(o as any).topic || (o as any).reason || ''} ${(o as any).purpose || ''}`).join(' ') }
   ]
   
   for (const section of sections) {
@@ -269,7 +286,7 @@ function generateAnalysisSnippet(analysis: any, query: string): string {
   return 'Found in analysis'
 }
 
-function calculateAnalysisRelevanceScore(analysis: any, query: string): number {
+function calculateAnalysisRelevanceScore(analysis: ExtendedAnalysis, query: string): number {
   const analysisText = JSON.stringify(analysis).toLowerCase()
   const lowerQuery = query.toLowerCase()
   

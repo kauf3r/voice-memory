@@ -655,6 +655,27 @@ export class ProcessingService implements ProcessingServiceInterface {
   }
 
   /**
+   * Get current processing metrics for monitoring (compatibility method)
+   */
+  getProcessingMetrics(): Map<string, any> {
+    return this.metricsCollector.getAllActiveMetrics()
+  }
+
+  /**
+   * Get circuit breaker status (compatibility method)
+   */
+  getCircuitBreakerStatus(): any {
+    return this.circuitBreaker.getStatus()
+  }
+
+  /**
+   * Get summary metrics for monitoring dashboards (compatibility method)
+   */
+  getSummaryMetrics(): any {
+    return this.metricsCollector.getSummaryMetrics()
+  }
+
+  /**
    * Shutdown the processing service and all sub-services
    */
   shutdown(): void {

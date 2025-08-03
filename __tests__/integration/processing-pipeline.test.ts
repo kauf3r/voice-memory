@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals'
-import { processingService } from '@/lib/processing-service'
+import { processingService } from '@/lib/processing/ProcessingService'
 import { createServiceClient } from '@/lib/supabase-server'
 import { transcribeAudio, analyzeTranscription } from '@/lib/openai'
 

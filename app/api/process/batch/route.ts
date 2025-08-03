@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
-import { processingService } from '@/lib/processing-service'
+import { processingService } from '@/lib/processing/ProcessingService'
 import { isAuthorizedCronRequest, isVercelCronRequest, getAuthMethod } from '@/lib/cron-auth'
 
 // Environment variable for cron authentication

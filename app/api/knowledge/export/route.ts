@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { CACHE_CONFIGS, generateCacheHeaders, generateETag } from '@/lib/cache/response-cache'
 
 // Force dynamic behavior to handle cookies and searchParams
 export const dynamic = 'force-dynamic'
@@ -97,13 +98,32 @@ export async function GET(request: NextRequest) {
     
     console.log(`📤 Export API - Aggregated data includes ${aggregatedData.content.allTasks.length} tasks`)
 
+    // Generate cache headers for export responses
+    const cacheHeaders = generateCacheHeaders(CACHE_CONFIGS.EXPORTS)
+    const etag = generateETag(knowledgeData)
+    
+    // Check if client has cached version
+    const ifNoneMatch = request.headers.get('if-none-match')
+    if (ifNoneMatch === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ...cacheHeaders,
+          'ETag': etag
+        }
+      })
+    }
+    
     // Generate export based on format
     switch (format) {
       case 'json':
         return new NextResponse(JSON.stringify(knowledgeData, null, 2), {
           headers: {
             'Content-Type': 'application/json',
-            'Content-Disposition': `attachment; filename="voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.json"`
+            'Content-Disposition': `attachment; filename="voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.json"`,
+            ...cacheHeaders,
+            'ETag': etag,
+            'Last-Modified': new Date().toUTCString()
           }
         })
 
@@ -112,7 +132,10 @@ export async function GET(request: NextRequest) {
         return new NextResponse(csvContent, {
           headers: {
             'Content-Type': 'text/csv',
-            'Content-Disposition': `attachment; filename="voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.csv"`
+            'Content-Disposition': `attachment; filename="voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.csv"`,
+            ...cacheHeaders,
+            'ETag': etag,
+            'Last-Modified': new Date().toUTCString()
           }
         })
 
@@ -121,7 +144,10 @@ export async function GET(request: NextRequest) {
         return new NextResponse(htmlContent, {
           headers: {
             'Content-Type': 'text/html',
-            'Content-Disposition': `attachment; filename="voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.html"`
+            'Content-Disposition': `attachment; filename="voice-memory-knowledge-${new Date().toISOString().split('T')[0]}.html"`,
+            ...cacheHeaders,
+            'ETag': etag,
+            'Last-Modified': new Date().toUTCString()
           }
         })
 

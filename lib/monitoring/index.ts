@@ -9,6 +9,20 @@ export { SystemHealthService } from './SystemHealthService'
 export { AlertingService } from './AlertingService'
 export { PerformanceMetricsTracker } from './PerformanceMetricsTracker'
 
+// New refactored alerting system
+export { 
+  AlertingServiceOrchestrator,
+  AlertLifecycleService,
+  AlertRuleEngine,
+  NotificationDispatcher,
+  EscalationScheduler,
+  AlertMetricsCollector,
+  AlertSuppressor,
+  ChannelHealthMonitor,
+  AlertingConfigManager,
+  NotificationTemplates
+} from './alerting'
+
 export type { 
   DatabaseHealthMetrics, 
   DatabaseAlert 
@@ -26,8 +40,18 @@ export type {
   AlertingMetrics,
   AlertSeverity,
   AlertType,
-  AlertStatus
-} from './AlertingService'
+  AlertStatus,
+  EscalationRule,
+  SuppressionRule,
+  NotificationPayload,
+  AlertingConfig,
+  AlertFilter,
+  EscalationTimer,
+  SuppressionEntry,
+  ChannelHealth,
+  AlertRepository,
+  AlertMetricsData
+} from './alerting'
 
 export type {
   PerformanceAnalytics,

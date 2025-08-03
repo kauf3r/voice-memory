@@ -1,32 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
-import { processingService } from '@/lib/processing-service'
+import { processingService } from '@/lib/processing/ProcessingService'
 import { quotaManager } from '@/lib/quota-manager'
+import type { ErrorResponse, ErrorType, UsageInfo, RateLimitInfo } from '@/lib/types/api'
 
 // Error categorization and mapping
-interface ErrorResponse {
-  error: string
-  details?: string
-  code?: string
-  retryAfter?: number
-  usage?: any
-  limits?: any
+enum ErrorTypeEnum {
+  VALIDATION = 'validation',
+  AUTHENTICATION = 'authentication',
+  AUTHORIZATION = 'authorization',
+  NOT_FOUND = 'not_found',
+  RATE_LIMIT = 'rate_limit',
+  QUOTA_EXCEEDED = 'quota_exceeded',
+  EXTERNAL_SERVICE = 'external_service',
+  STORAGE = 'storage_error',
+  PROCESSING = 'processing_error',
+  INTERNAL = 'server_error'
 }
 
-enum ErrorType {
-  VALIDATION = 'VALIDATION',
-  AUTHENTICATION = 'AUTHENTICATION',
-  AUTHORIZATION = 'AUTHORIZATION',
-  NOT_FOUND = 'NOT_FOUND',
-  RATE_LIMIT = 'RATE_LIMIT',
-  QUOTA_EXCEEDED = 'QUOTA_EXCEEDED',
-  EXTERNAL_SERVICE = 'EXTERNAL_SERVICE',
-  STORAGE = 'STORAGE',
-  PROCESSING = 'PROCESSING',
-  INTERNAL = 'INTERNAL'
-}
-
-function categorizeError(error: any): { type: ErrorType; statusCode: number; response: ErrorResponse } {
+function categorizeError(error: unknown): { type: ErrorType; statusCode: number; response: ErrorResponse } {
   const errorMessage = error instanceof Error ? error.message : String(error)
   const lowerMessage = errorMessage.toLowerCase()
 
@@ -34,12 +26,14 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
   if (lowerMessage.includes('unauthorized') || lowerMessage.includes('authentication failed') || 
       lowerMessage.includes('invalid token') || lowerMessage.includes('token expired')) {
     return {
-      type: ErrorType.AUTHENTICATION,
+      type: ErrorTypeEnum.AUTHENTICATION,
       statusCode: 401,
       response: {
         error: 'Authentication required',
         details: 'Please log in to continue',
-        code: 'AUTH_REQUIRED'
+        code: 'AUTH_REQUIRED',
+        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString()
       }
     }
   }
@@ -48,12 +42,13 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
   if (lowerMessage.includes('forbidden') || lowerMessage.includes('access denied') || 
       lowerMessage.includes('insufficient permissions')) {
     return {
-      type: ErrorType.AUTHORIZATION,
+      type: ErrorTypeEnum.AUTHORIZATION,
       statusCode: 403,
       response: {
         error: 'Access denied',
         details: 'You do not have permission to perform this action',
-        code: 'ACCESS_DENIED'
+        code: 'ACCESS_DENIED',
+        timestamp: new Date().toISOString()
       }
     }
   }
@@ -62,12 +57,13 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
   if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist') || 
       lowerMessage.includes('no rows returned')) {
     return {
-      type: ErrorType.NOT_FOUND,
+      type: ErrorTypeEnum.NOT_FOUND,
       statusCode: 404,
       response: {
         error: 'Resource not found',
         details: 'The requested note or resource could not be found',
-        code: 'NOT_FOUND'
+        code: 'NOT_FOUND',
+        timestamp: new Date().toISOString()
       }
     }
   }
@@ -77,12 +73,13 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
         lowerMessage.includes('invalid file') || lowerMessage.includes('file too large') ||
         lowerMessage.includes('transcription failed') || lowerMessage.includes('analysis failed')) {
       return {
-        type: ErrorType.EXTERNAL_SERVICE,
+        type: ErrorTypeEnum.EXTERNAL_SERVICE,
         statusCode: 502,
         response: {
           error: 'External service error',
           details: 'The processing service is temporarily unavailable. Please try again later.',
-          code: 'EXTERNAL_SERVICE_ERROR'
+          code: 'EXTERNAL_SERVICE_ERROR',
+          timestamp: new Date().toISOString()
         }
       }
     }
@@ -91,13 +88,14 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
     if (lowerMessage.includes('rate limit') || lowerMessage.includes('too many requests') || 
         lowerMessage.includes('rate_limit_exceeded')) {
       return {
-        type: ErrorType.RATE_LIMIT,
+        type: ErrorTypeEnum.RATE_LIMIT,
         statusCode: 429,
         response: {
           error: 'Rate limit exceeded',
           details: 'Too many requests. Please wait before trying again.',
           code: 'RATE_LIMIT_EXCEEDED',
-          retryAfter: 60 // 1 minute
+          retryAfter: 60, // 1 minute
+          timestamp: new Date().toISOString()
         }
       }
     }
@@ -106,12 +104,13 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
     if (lowerMessage.includes('quota exceeded') || lowerMessage.includes('processing quota') || 
         lowerMessage.includes('storage limit') || lowerMessage.includes('maximum')) {
       return {
-        type: ErrorType.QUOTA_EXCEEDED,
+        type: ErrorTypeEnum.QUOTA_EXCEEDED,
         statusCode: 429,
         response: {
           error: 'Quota exceeded',
           details: 'You have reached your processing limit. Please wait or upgrade your plan.',
-          code: 'QUOTA_EXCEEDED'
+          code: 'QUOTA_EXCEEDED',
+          timestamp: new Date().toISOString()
         }
       }
     }
@@ -120,12 +119,13 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
   if (lowerMessage.includes('storage') || lowerMessage.includes('file') || 
       lowerMessage.includes('audio file') || lowerMessage.includes('download')) {
     return {
-      type: ErrorType.STORAGE,
+      type: ErrorTypeEnum.STORAGE,
       statusCode: 500,
       response: {
         error: 'Storage error',
         details: 'Unable to access the audio file. Please try again or contact support.',
-        code: 'STORAGE_ERROR'
+        code: 'STORAGE_ERROR',
+        timestamp: new Date().toISOString()
       }
     }
   }
@@ -134,12 +134,13 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
   if (lowerMessage.includes('processing') || lowerMessage.includes('analysis') || 
       lowerMessage.includes('transcription') || lowerMessage.includes('validation')) {
     return {
-      type: ErrorType.PROCESSING,
+      type: ErrorTypeEnum.PROCESSING,
       statusCode: 422,
       response: {
         error: 'Processing failed',
         details: 'Unable to process the audio file. Please check the file format and try again.',
-        code: 'PROCESSING_ERROR'
+        code: 'PROCESSING_ERROR',
+        timestamp: new Date().toISOString()
       }
     }
   }
@@ -148,29 +149,31 @@ function categorizeError(error: any): { type: ErrorType; statusCode: number; res
   if (lowerMessage.includes('validation') || lowerMessage.includes('invalid') || 
       lowerMessage.includes('required') || lowerMessage.includes('missing')) {
     return {
-      type: ErrorType.VALIDATION,
+      type: ErrorTypeEnum.VALIDATION,
       statusCode: 400,
       response: {
         error: 'Invalid request',
         details: errorMessage,
-        code: 'VALIDATION_ERROR'
+        code: 'VALIDATION_ERROR',
+        timestamp: new Date().toISOString()
       }
     }
   }
 
   // Default internal error
   return {
-    type: ErrorType.INTERNAL,
+    type: ErrorTypeEnum.INTERNAL,
     statusCode: 500,
     response: {
       error: 'Internal server error',
       details: 'An unexpected error occurred. Please try again later.',
-      code: 'INTERNAL_ERROR'
+      code: 'INTERNAL_ERROR',
+      timestamp: new Date().toISOString()
     }
   }
 }
 
-function createErrorResponse(error: any, additionalData?: any): NextResponse {
+function createErrorResponse(error: unknown, additionalData?: Partial<ErrorResponse>): NextResponse {
   const { type, statusCode, response } = categorizeError(error)
   
   // Add additional data if provided
@@ -180,7 +183,7 @@ function createErrorResponse(error: any, additionalData?: any): NextResponse {
 
   // Add retry-after header for rate limit errors
   const headers: Record<string, string> = {}
-  if (type === ErrorType.RATE_LIMIT && response.retryAfter) {
+  if (type === ErrorTypeEnum.RATE_LIMIT && response.retryAfter) {
     headers['Retry-After'] = response.retryAfter.toString()
   }
 

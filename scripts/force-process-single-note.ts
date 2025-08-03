@@ -30,7 +30,7 @@ async function forceProcessNote() {
       // Try the direct processing approach
       try {
         // Import the processing service
-        const { processingService } = await import('../lib/processing-service');
+        const { processingService } = await import('../lib/processing/ProcessingService');
         
         // Process the note
         const result = await processingService.processNote(note.id);

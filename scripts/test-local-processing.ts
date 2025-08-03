@@ -4,7 +4,7 @@
  * Test local processing directly
  */
 
-import { processingService } from '../lib/processing-service';
+import { processingService } from '../lib/processing/ProcessingService';
 import { createServiceClient } from '../lib/supabase-server';
 
 async function testLocalProcessing() {

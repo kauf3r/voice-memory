@@ -107,9 +107,44 @@ export function validateAnalysis(rawAnalysis: unknown): {
   }
 }
 
+// Helper type for unknown analysis structure
+interface RawAnalysisData {
+  sentiment?: {
+    classification?: unknown
+    explanation?: unknown
+  }
+  focusTopics?: {
+    primary?: unknown
+    minor?: unknown
+  }
+  tasks?: {
+    myTasks?: unknown
+    delegatedTasks?: unknown
+  }
+  keyIdeas?: unknown
+  messagesToDraft?: unknown
+  crossReferences?: {
+    relatedNotes?: unknown
+    projectKnowledgeUpdates?: unknown
+  }
+  outreachIdeas?: unknown
+  structuredData?: {
+    dates?: unknown
+    times?: unknown
+    locations?: unknown
+    numbers?: unknown
+    people?: unknown
+  }
+  recordingContext?: {
+    recordedAt?: unknown
+    extractedDate?: unknown
+    timeReferences?: unknown
+  }
+}
+
 // Create a partial analysis with fallback values - now matching flat structure
 function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
-  const raw = rawAnalysis as any
+  const raw = rawAnalysis as RawAnalysisData
   
   return {
     sentiment: {
@@ -130,10 +165,10 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
     },
     tasks: {
       myTasks: Array.isArray(raw?.tasks?.myTasks) 
-        ? raw.tasks.myTasks.filter((t: any) => typeof t === 'string' && t.length > 0)
+        ? raw.tasks.myTasks.filter((t) => typeof t === 'string' && t.length > 0)
         : [],
       delegatedTasks: Array.isArray(raw?.tasks?.delegatedTasks)
-        ? raw.tasks.delegatedTasks.filter((t: any) => 
+        ? raw.tasks.delegatedTasks.filter((t) => 
             t && typeof t.task === 'string' && 
             typeof t.assignedTo === 'string' && 
             typeof t.nextSteps === 'string'
@@ -141,10 +176,10 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
         : [],
     },
     keyIdeas: Array.isArray(raw?.keyIdeas)
-      ? raw.keyIdeas.filter((idea: any) => typeof idea === 'string' && idea.length > 0)
+      ? raw.keyIdeas.filter((idea) => typeof idea === 'string' && idea.length > 0)
       : [],
     messagesToDraft: Array.isArray(raw?.messagesToDraft)
-      ? raw.messagesToDraft.filter((msg: any) =>
+      ? raw.messagesToDraft.filter((msg) =>
           msg && typeof msg.recipient === 'string' &&
           typeof msg.subject === 'string' &&
           typeof msg.body === 'string'
@@ -152,14 +187,14 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
       : [],
     crossReferences: {
       relatedNotes: Array.isArray(raw?.crossReferences?.relatedNotes)
-        ? raw.crossReferences.relatedNotes.filter((note: any) => typeof note === 'string')
+        ? raw.crossReferences.relatedNotes.filter((note) => typeof note === 'string')
         : [],
       projectKnowledgeUpdates: Array.isArray(raw?.crossReferences?.projectKnowledgeUpdates)
-        ? raw.crossReferences.projectKnowledgeUpdates.filter((update: any) => typeof update === 'string')
+        ? raw.crossReferences.projectKnowledgeUpdates.filter((update) => typeof update === 'string')
         : [],
     },
     outreachIdeas: Array.isArray(raw?.outreachIdeas)
-      ? raw.outreachIdeas.filter((idea: any) =>
+      ? raw.outreachIdeas.filter((idea) =>
           idea && typeof idea.contact === 'string' &&
           typeof idea.topic === 'string' &&
           typeof idea.purpose === 'string'
@@ -167,27 +202,27 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
       : [],
     structuredData: {
       dates: Array.isArray(raw?.structuredData?.dates)
-        ? raw.structuredData.dates.filter((d: any) =>
+        ? raw.structuredData.dates.filter((d) =>
             d && typeof d.date === 'string' && typeof d.context === 'string'
           )
         : [],
       times: Array.isArray(raw?.structuredData?.times)
-        ? raw.structuredData.times.filter((t: any) =>
+        ? raw.structuredData.times.filter((t) =>
             t && typeof t.time === 'string' && typeof t.context === 'string'
           )
         : [],
       locations: Array.isArray(raw?.structuredData?.locations)
-        ? raw.structuredData.locations.filter((l: any) =>
+        ? raw.structuredData.locations.filter((l) =>
             l && typeof l.place === 'string' && typeof l.context === 'string'
           )
         : [],
       numbers: Array.isArray(raw?.structuredData?.numbers)
-        ? raw.structuredData.numbers.filter((n: any) =>
+        ? raw.structuredData.numbers.filter((n) =>
             n && typeof n.value === 'string' && typeof n.context === 'string'
           )
         : [],
       people: Array.isArray(raw?.structuredData?.people)
-        ? raw.structuredData.people.filter((p: any) =>
+        ? raw.structuredData.people.filter((p) =>
             p && typeof p.name === 'string' && typeof p.context === 'string'
           )
         : [],
@@ -200,7 +235,7 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
         ? raw.recordingContext.extractedDate
         : undefined,
       timeReferences: Array.isArray(raw?.recordingContext?.timeReferences)
-        ? raw.recordingContext.timeReferences.filter((ref: any) => typeof ref === 'string')
+        ? raw.recordingContext.timeReferences.filter((ref) => typeof ref === 'string')
         : [],
     },
   }
