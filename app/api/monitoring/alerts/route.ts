@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
 import { AlertingService } from '@/lib/monitoring/AlertingService'
-import { getConfig } from '@/lib/config'
+import { getConfig } from '@/lib/config/index'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'

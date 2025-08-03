@@ -8,6 +8,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - **Authentication**: Bearer token (Supabase JWT)
 - **Content-Type**: `application/json` (unless otherwise specified)
 - **Response Format**: JSON
+- **Version**: 1.1.0 (Enhanced with monitoring and admin endpoints)
 
 ## Authentication
 
@@ -495,19 +496,155 @@ curl -X POST http://localhost:3000/api/tasks/task-id/pin \
   -d '{"task": "Complete project documentation"}'
 ```
 
-## Webhooks (Future)
+## 5. Monitoring Endpoints (New in v1.1)
 
-The API is designed to support webhooks for real-time notifications:
+### System Health
+**Endpoint**: `GET /api/monitoring/health`
+
+**Response**:
+```json
+{
+  "status": "healthy",
+  "timestamp": "ISO date",
+  "services": {
+    "database": "healthy",
+    "openai": "healthy", 
+    "supabase": "healthy"
+  },
+  "metrics": {
+    "uptime": 3600,
+    "memoryUsage": "85%",
+    "responseTime": "120ms"
+  }
+}
+```
+
+### Performance Metrics
+**Endpoint**: `GET /api/monitoring/performance`
+
+**Response**:
+```json
+{
+  "metrics": {
+    "averageResponseTime": 150,
+    "requestsPerSecond": 25,
+    "errorRate": 0.02,
+    "activeConnections": 45
+  },
+  "trends": {
+    "direction": "improving",
+    "change": 5
+  }
+}
+```
+
+### System Alerts
+**Endpoint**: `GET /api/monitoring/alerts`
+
+**Response**:
+```json
+{
+  "alerts": [
+    {
+      "id": "alert-1",
+      "severity": "warning",
+      "message": "High response time detected",
+      "timestamp": "ISO date",
+      "resolved": false
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "critical": 0,
+    "warnings": 2,
+    "info": 1
+  }
+}
+```
+
+## 6. Admin Endpoints (New in v1.1)
+
+**Note**: Admin endpoints require special authorization (admin API key).
+
+### Background Jobs
+**Endpoint**: `GET /api/admin/background-jobs`
+
+**Headers**:
+```
+x-admin-key: your-admin-api-key
+```
+
+**Response**:
+```json
+{
+  "jobs": [
+    {
+      "id": "job-1",
+      "type": "audio_processing",
+      "status": "running",
+      "progress": 75,
+      "started_at": "ISO date"
+    }
+  ],
+  "summary": {
+    "total": 10,
+    "running": 3,
+    "completed": 6,
+    "failed": 1
+  }
+}
+```
+
+### System Performance
+**Endpoint**: `POST /api/admin/system-performance`
+
+**Request Body**:
+```json
+{
+  "action": "get_system_metrics",
+  "timeframe": "24h"
+}
+```
+
+**Response**:
+```json
+{
+  "metrics": {
+    "cpu_usage": "45%",
+    "memory_usage": "67%",
+    "disk_usage": "23%",
+    "network_io": "45MB/s"
+  },
+  "performance": {
+    "average_processing_time": "2.3s",
+    "queue_length": 5,
+    "success_rate": "98.5%"
+  }
+}
+```
+
+## Webhooks
+
+The API supports webhooks for real-time notifications:
 
 - `note.processed` - When audio processing completes
 - `task.pinned` - When a task is pinned
-- `analysis.completed` - When AI analysis finishes
+- `analysis.completed` - When AI analysis finishes  
+- `system.alert` - When system alerts are triggered (New in v1.1)
+- `performance.threshold` - When performance thresholds are exceeded (New in v1.1)
 
 ## Versioning
 
-The API follows semantic versioning. Current version: `v1`
+The API follows semantic versioning. Current version: `v1.1`
 
 Future versions will be available at `/api/v2/` etc.
+
+### Version 1.1 Changes
+- Added comprehensive monitoring endpoints
+- Added admin endpoints for system management
+- Enhanced task completion tracking
+- Added real-time health monitoring
+- Improved error handling and recovery
 
 ## Support
 
@@ -516,3 +653,5 @@ For API support:
 - Review the comprehensive error handling documentation
 - Use the health check endpoint to verify service status
 - Monitor rate limiting headers to avoid limits
+- Use the new monitoring endpoints for system insights (v1.1+)
+- Check admin endpoints for detailed system performance (v1.1+)

@@ -40,7 +40,7 @@ export type { SystemHealthMetrics } from '../processing/interfaces'
 
 import { SystemHealthService } from './SystemHealthService'
 import { processingService } from '../processing/ProcessingService'
-import { getConfig } from '../config'
+import { getConfig } from '../config/index'
 
 /**
  * Global system health service instance

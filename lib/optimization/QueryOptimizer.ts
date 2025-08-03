@@ -4,7 +4,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '../supabase-server'
-import { getSection } from '../config'
+import { getSection } from '../config/index'
 
 export interface QueryPerformanceMetrics {
   queryId: string

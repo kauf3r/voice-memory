@@ -5,7 +5,7 @@
 import { DatabaseHealthMonitor, DatabaseHealthMetrics, DatabaseAlert } from './DatabaseHealthMonitor'
 import { ProcessingService } from '../processing/ProcessingService'
 import { SystemHealthMetrics } from '../processing/interfaces'
-import { getConfig, getSection } from '../config'
+import { getConfig, getSection } from '../config/index'
 import { AlertingService } from './AlertingService'
 
 export interface ComprehensiveHealthMetrics {
