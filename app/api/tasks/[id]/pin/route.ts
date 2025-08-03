@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { TaskStateService } from '@/lib/services/TaskStateService'
 
 // Pin a task
 export async function POST(
@@ -20,44 +21,12 @@ export async function POST(
 
     const token = authHeader.split(' ')[1]
     
-    // Create service client for authentication - fallback to anon key if service key not available
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    // Use centralized authentication
+    const { user, error: authError, client: dbClient } = await getAuthenticatedUser(token)
     
-    // Verify the user - handle both service key and anon key scenarios
-    let user = null
-    let authError = null
-    
-    if (process.env.SUPABASE_SERVICE_KEY) {
-      // If we have a service key, use it to validate the token
-      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
-      user = serviceUser
-      authError = serviceError
-    } else {
-      // If using anon key, create a new client with the user's token
-      const authenticatedClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        }
-      )
-      
-      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
-      user = anonUser
-      authError = anonError
-    }
-    
-    if (authError || !user) {
-      console.error('Auth error:', authError)
+    if (authError || !user || !dbClient) {
       return NextResponse.json(
-        { error: 'Invalid authentication token' },
+        { error: authError?.message || 'Authentication failed' },
         { status: 401 }
       )
     }
@@ -81,19 +50,6 @@ export async function POST(
 
     const noteId = taskIdParts.slice(0, -2).join('-') // Everything except last 2 parts
     
-    // Use the authenticated client for database queries when using anon key
-    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    )
-    
     // Verify the note exists and belongs to the user
     const { data: note, error: noteError } = await dbClient
       .from('notes')
@@ -109,67 +65,53 @@ export async function POST(
       )
     }
 
-    // Check current pin count to provide better error messaging
-    const { data: currentPins, error: countError } = await dbClient
-      .from('task_pins')
-      .select('id')
-      .eq('user_id', user.id)
-
-    if (countError) {
-      console.error('Error checking pin count:', countError)
-      return NextResponse.json(
-        { error: 'Database error' },
-        { status: 500 }
-      )
-    }
-
-    if (currentPins && currentPins.length >= 10) {
-      return NextResponse.json(
-        { 
-          error: 'Pin limit exceeded. You can only pin up to 10 tasks at a time.',
-          code: 'PIN_LIMIT_EXCEEDED',
-          currentCount: currentPins.length,
-          maxPins: 10
-        },
-        { status: 400 }
-      )
-    }
-
-    // Insert the pin
-    const { data: pinData, error: pinError } = await dbClient
-      .from('task_pins')
-      .insert({
+    // Use TaskStateService to pin the task
+    const taskStateService = new TaskStateService(dbClient)
+    
+    try {
+      const taskState = await taskStateService.pinTask({
         user_id: user.id,
-        task_id: taskId
+        task_id: taskId,
+        note_id: noteId
       })
-      .select()
-      .single()
 
-    if (pinError) {
-      // Handle duplicate pin attempt
-      if (pinError.code === '23505') { // unique_violation
+      return NextResponse.json({
+        success: true,
+        message: 'Task pinned successfully',
+        pin: {
+          id: taskState.id,
+          taskId: taskId,
+          pinnedAt: taskState.pinned_at
+        }
+      })
+    } catch (serviceError) {
+      const errorMessage = serviceError instanceof Error ? serviceError.message : 'Unknown error'
+      
+      // Map service errors to appropriate HTTP status codes
+      if (errorMessage.includes('Pin limit exceeded')) {
         return NextResponse.json(
-          { error: 'Task is already pinned' },
+          { 
+            error: errorMessage,
+            code: 'PIN_LIMIT_EXCEEDED',
+            maxPins: 10
+          },
           { status: 400 }
         )
       }
       
-      console.error('Pin error:', pinError)
+      if (errorMessage.includes('already pinned')) {
+        return NextResponse.json(
+          { error: errorMessage },
+          { status: 400 }
+        )
+      }
+      
+      console.error('TaskStateService error:', serviceError)
       return NextResponse.json(
         { error: 'Failed to pin task' },
         { status: 500 }
       )
     }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Task pinned successfully',
-      pin: {
-        id: pinData.id,
-        taskId: taskId,
-        pinnedAt: pinData.pinned_at
-      }
-    })
 
   } catch (error) {
     console.error('Unexpected error in pin endpoint:', error)
@@ -199,44 +141,12 @@ export async function DELETE(
 
     const token = authHeader.split(' ')[1]
     
-    // Create service client for authentication - fallback to anon key if service key not available
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    // Use centralized authentication
+    const { user, error: authError, client: dbClient } = await getAuthenticatedUser(token)
     
-    // Verify the user - handle both service key and anon key scenarios
-    let user = null
-    let authError = null
-    
-    if (process.env.SUPABASE_SERVICE_KEY) {
-      // If we have a service key, use it to validate the token
-      const { data: { user: serviceUser }, error: serviceError } = await supabase.auth.getUser(token)
-      user = serviceUser
-      authError = serviceError
-    } else {
-      // If using anon key, create a new client with the user's token
-      const authenticatedClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        }
-      )
-      
-      const { data: { user: anonUser }, error: anonError } = await authenticatedClient.auth.getUser()
-      user = anonUser
-      authError = anonError
-    }
-    
-    if (authError || !user) {
-      console.error('Auth error:', authError)
+    if (authError || !user || !dbClient) {
       return NextResponse.json(
-        { error: 'Invalid authentication token' },
+        { error: authError?.message || 'Authentication failed' },
         { status: 401 }
       )
     }
@@ -249,48 +159,31 @@ export async function DELETE(
       )
     }
     
-    // Use the authenticated client for database queries when using anon key
-    const dbClient = process.env.SUPABASE_SERVICE_KEY ? supabase : createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+    // Use TaskStateService to unpin the task
+    const taskStateService = new TaskStateService(dbClient)
+    
+    try {
+      const success = await taskStateService.unpinTask(user.id, taskId)
+
+      if (!success) {
+        return NextResponse.json(
+          { error: 'Task was not pinned' },
+          { status: 404 }
+        )
       }
-    )
 
-    // Delete the pin
-    const { data: deletedPin, error: deleteError } = await dbClient
-      .from('task_pins')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('task_id', taskId)
-      .select()
-      .single()
-
-    if (deleteError) {
-      console.error('Unpin error:', deleteError)
+      return NextResponse.json({
+        success: true,
+        message: 'Task unpinned successfully',
+        taskId: taskId
+      })
+    } catch (serviceError) {
+      console.error('TaskStateService error:', serviceError)
       return NextResponse.json(
         { error: 'Failed to unpin task' },
         { status: 500 }
       )
     }
-
-    if (!deletedPin) {
-      return NextResponse.json(
-        { error: 'Task was not pinned' },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Task unpinned successfully',
-      taskId: taskId
-    })
 
   } catch (error) {
     console.error('Unexpected error in unpin endpoint:', error)

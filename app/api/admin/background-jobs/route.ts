@@ -7,15 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { processingService } from '@/lib/processing/ProcessingService'
-import { getUser } from '@/lib/auth-server'
+import { requireAdminUser } from '@/lib/auth-server'
 
 export async function GET(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const url = new URL(request.url)
     const action = url.searchParams.get('action')
@@ -75,6 +72,17 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Background jobs API error:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to process background jobs request',
@@ -87,11 +95,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const body = await request.json()
     const { type, payload = {}, priority = 5, scheduledAt } = body
@@ -126,6 +131,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Failed to schedule background job:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to schedule background job',
@@ -138,11 +154,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const url = new URL(request.url)
     const jobId = url.searchParams.get('jobId')
@@ -171,6 +184,17 @@ export async function DELETE(request: NextRequest) {
 
   } catch (error) {
     console.error('Failed to cancel background job:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to cancel background job',
@@ -183,11 +207,8 @@ export async function DELETE(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    // Get the current user
-    const user = await getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Verify admin access
+    await requireAdminUser()
 
     const body = await request.json()
     const { action, ...params } = body
@@ -229,6 +250,17 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('Failed to update background jobs:', error)
+    
+    // Handle authorization errors
+    if (error instanceof Error) {
+      if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+      if (error.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to update background jobs',

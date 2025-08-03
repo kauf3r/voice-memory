@@ -10,6 +10,8 @@ interface AuthContextType {
   loading: boolean
   signInWithEmail: (email: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<{ error: Error | null }>
+  getAccessToken: () => Promise<string | null>
+  isAuthenticated: boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +19,8 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signInWithEmail: async () => ({ error: null }),
   signOut: async () => ({ error: null }),
+  getAccessToken: async () => null,
+  isAuthenticated: false,
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -152,8 +156,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const getAccessToken = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      return session?.access_token || null
+    } catch (error) {
+      AuthDebugger.error('Failed to get access token:', error)
+      return null
+    }
+  }
+
+  const isAuthenticated = user !== null
+
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signInWithEmail, signOut, getAccessToken, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   )

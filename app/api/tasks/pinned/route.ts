@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { TaskStateService } from '@/lib/services/TaskStateService'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -56,53 +57,44 @@ export async function GET(request: NextRequest) {
       userEmail: user.email
     })
     
-    // Get all pinned task IDs for the user ordered by pin_order
-    console.log('🗄️ Querying task_pins table for user:', user.id)
-    const { data: pins, error: pinsError } = await dbClient
-      .from('task_pins')
-      .select('task_id, pinned_at, pin_order')
-      .eq('user_id', user.id)
-      .order('pin_order', { ascending: true })
-      .order('pinned_at', { ascending: true })
-
-    if (pinsError) {
-      console.error('🚨 Database query failed:', {
-        error: pinsError,
-        message: pinsError.message,
-        details: pinsError.details,
-        hint: pinsError.hint,
-        code: pinsError.code
+    // Use TaskStateService to get pinned tasks
+    console.log('🗄️ Getting pinned tasks for user:', user.id)
+    const taskStateService = new TaskStateService(dbClient)
+    
+    try {
+      const taskStates = await taskStateService.getPinnedTasks(user.id)
+      
+      console.log('📈 TaskStateService query successful:', {
+        rowCount: taskStates.length,
+        taskStates: taskStates.map(ts => ({ taskId: ts.task_id, order: ts.pin_order }))
       })
+
+      // Extract just the task IDs and pin metadata
+      const pinnedTasks = taskStates.map(taskState => ({
+        taskId: taskState.task_id,
+        pinnedAt: taskState.pinned_at,
+        pinOrder: taskState.pin_order
+      }))
+      
+      console.log('✅ Returning successful response with', pinnedTasks.length, 'pinned tasks')
+
+      return NextResponse.json({
+        success: true,
+        pinnedTasks,
+        count: pinnedTasks.length,
+        maxPins: 10
+      })
+    } catch (serviceError) {
+      console.error('🚨 TaskStateService query failed:', serviceError)
       return NextResponse.json(
         { 
           error: 'Database query failed',
-          details: pinsError.message,
-          code: pinsError.code 
+          details: serviceError instanceof Error ? serviceError.message : 'Unknown error'
         },
         { status: 500 }
       )
     }
 
-    console.log('📈 Database query successful:', {
-      rowCount: pins?.length || 0,
-      pins: pins?.map(p => ({ taskId: p.task_id, order: p.pin_order }))
-    })
-
-    // Extract just the task IDs and pin metadata
-    const pinnedTasks = pins?.map(pin => ({
-      taskId: pin.task_id,
-      pinnedAt: pin.pinned_at,
-      pinOrder: pin.pin_order
-    })) || []
-
-    console.log('✅ Returning successful response with', pinnedTasks.length, 'pinned tasks')
-
-    return NextResponse.json({
-      success: true,
-      pinnedTasks,
-      count: pinnedTasks.length,
-      maxPins: 10
-    })
 
   } catch (error) {
     console.error('❌ Unexpected error in /api/tasks/pinned:', {

@@ -1,4 +1,3 @@
-export function isAdminUser(user: any): boolean {
-  return user?.email?.endsWith('@voicememory.test') || 
-         user?.id === 'admin-user-id' // Add specific admin user IDs here
-}
+// Admin utilities moved to auth-server.ts
+// This file is deprecated - use auth-server.ts for admin functions
+export { isAdminUser, requireAdminUser } from './auth-server'

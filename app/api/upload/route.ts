@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase-server'
 import { uploadAudioFile } from '@/lib/storage'
 import { quotaManager } from '@/lib/quota-manager'
+import { validateFileUpload, checkUploadRateLimit } from '@/lib/security/file-validation'
 
 export async function POST(request: NextRequest) {
   console.log('Upload API called')
@@ -73,68 +74,57 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file type - Enhanced M4A/MP4 support
-    console.log('File type:', file.type, 'File size:', file.size, 'File name:', file.name)
-    const allowedTypes = [
-      // Audio formats
-      'audio/mpeg',
-      'audio/mp3', 
-      'audio/wav',
-      'audio/m4a',      // M4A audio container
-      'audio/mp4',      // M4A files reported as audio/mp4
-      'audio/x-m4a',    // Alternative M4A MIME type
-      'audio/aac',
-      'audio/ogg',
-      'audio/webm',
-      // Video formats (will extract audio during processing)
-      'video/mp4',      // MP4 video files
-      'video/quicktime', // .mov files
-      'video/x-msvideo', // .avi files
-      'video/webm',     // WebM video files
-    ]
-    
-    // Enhanced file type validation with better error reporting
-    if (!allowedTypes.includes(file.type)) {
-      console.log('File type validation failed:', {
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        allowedTypes: allowedTypes
-      })
-      
-      // Special handling for common M4A MIME type variations
-      const fileExtension = file.name.split('.').pop()?.toLowerCase()
-      if (fileExtension === 'm4a' && !['audio/m4a', 'audio/mp4', 'audio/x-m4a'].includes(file.type)) {
-        console.log('M4A file with unexpected MIME type:', file.type, '- attempting to process anyway')
-        // Allow M4A files even with unexpected MIME types
-      } else {
-        return NextResponse.json(
-          { 
-            error: `File type ${file.type} not supported`,
-            details: `File extension: .${fileExtension}. Supported formats: audio files (MP3, M4A, WAV, AAC, OGG) and video files (MP4, MOV, AVI, WebM)`,
-            fileType: file.type,
-            fileName: file.name
-          },
-          { status: 400 }
-        )
-      }
-    }
-    
-    console.log('File type validation passed')
+    console.log('Starting comprehensive file validation...')
+    console.log('File details:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      lastModified: file.lastModified
+    })
 
-    // Validate file size (25MB limit for better processing)
-    const maxSize = 25 * 1024 * 1024
-    if (file.size > maxSize) {
+    // Rate limiting check
+    const rateLimitResult = checkUploadRateLimit(user.id, 10, 60000) // 10 uploads per minute
+    if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { 
-          error: 'File too large. Maximum size is 25MB',
-          details: `Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB. Please compress or trim your audio file.`,
-          maxSizeMB: 25,
-          currentSizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10
+          error: 'Rate limit exceeded',
+          details: rateLimitResult.error,
+          remaining: rateLimitResult.remaining,
+          resetTime: rateLimitResult.resetTime
         },
-        { status: 413 } // Payload Too Large
+        { status: 429 } // Too Many Requests
       )
     }
+
+    // Comprehensive security validation
+    const validationResult = await validateFileUpload(file)
+    
+    if (!validationResult.valid) {
+      console.error('File validation failed:', validationResult.errors)
+      return NextResponse.json(
+        { 
+          error: 'File validation failed',
+          details: validationResult.errors.join('. '),
+          warnings: validationResult.warnings,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        },
+        { status: 400 }
+      )
+    }
+
+    // Log validation warnings if any
+    if (validationResult.warnings && validationResult.warnings.length > 0) {
+      console.warn('File validation warnings:', validationResult.warnings)
+    }
+
+    console.log('File validation passed:', {
+      sanitizedFilename: validationResult.sanitizedFilename,
+      detectedMimeType: validationResult.detectedMimeType,
+      detectedExtension: validationResult.detectedExtension,
+      fileHash: validationResult.fileHash
+    })
 
     // Check quota limits using quota manager (temporarily disabled for testing)
     try {
@@ -154,9 +144,16 @@ export async function POST(request: NextRequest) {
       console.warn('Quota check failed, proceeding with upload:', error)
     }
 
-    // Upload to Supabase storage
-    console.log('Starting storage upload for user:', user.id)
-    const { url, error: uploadError } = await uploadAudioFile(file, user.id, supabase)
+    // Upload to Supabase storage using sanitized filename
+    console.log('Starting storage upload for user:', user.id, 'with sanitized filename:', validationResult.sanitizedFilename)
+    
+    // Create a new File object with sanitized name for storage
+    const sanitizedFile = new File([file], validationResult.sanitizedFilename!, {
+      type: validationResult.detectedMimeType || file.type,
+      lastModified: file.lastModified
+    })
+    
+    const { url, error: uploadError } = await uploadAudioFile(sanitizedFile, user.id, supabase)
     
     if (uploadError) {
       console.error('Upload error:', uploadError)
@@ -240,6 +237,13 @@ export async function POST(request: NextRequest) {
           initiated: processResponse.ok,
           status: processResponse.status,
           result: processingResult
+        },
+        security: {
+          originalFilename: file.name,
+          sanitizedFilename: validationResult.sanitizedFilename,
+          detectedMimeType: validationResult.detectedMimeType,
+          fileHash: validationResult.fileHash,
+          rateLimitRemaining: rateLimitResult.remaining
         }
       })
     } catch (processingError) {
@@ -254,6 +258,13 @@ export async function POST(request: NextRequest) {
         processing: {
           initiated: false,
           error: processingError instanceof Error ? processingError.message : 'Failed to initiate processing'
+        },
+        security: {
+          originalFilename: file.name,
+          sanitizedFilename: validationResult.sanitizedFilename,
+          detectedMimeType: validationResult.detectedMimeType,
+          fileHash: validationResult.fileHash,
+          rateLimitRemaining: rateLimitResult.remaining
         }
       })
     }
