@@ -41,7 +41,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
     isProcessing,
     processingAttempts,
     errorSeverity,
-    getStatusIcon,
+    statusIcon,
     getStatusColor,
     getStatusText,
     getSentimentColor,
@@ -64,7 +64,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
         recordedAt={note.recorded_at}
         durationSeconds={note.duration_seconds}
         processingStartedAt={note.processing_started_at}
-        statusIcon={getStatusIcon()}
+        statusIcon={statusIcon}
         statusText={getStatusText()}
         statusColorClasses={getStatusColor()}
         sentiment={sentiment}
