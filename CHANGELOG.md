@@ -82,14 +82,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Developer onboarding documentation
 
 ### Changed
-- **Repository Structure**: Consolidated branches (clean-main merged to main)
+- **Repository Structure**: Consolidated to standard main branch workflow
 - **Git Workflow**: Enhanced with safety features and corruption detection
 - **Development Experience**: Streamlined setup process for new machines
 - **Documentation**: Updated README to reflect production-ready status
 
 ### Fixed
 - **Git Repository Corruption**: Complete recovery system implemented
-- **Branch Management**: Resolved clean-main/main branch inconsistencies
+- **Branch Management**: Established standard main branch workflow
 - **Developer Onboarding**: Simplified multi-computer development setup
 
 ## [Previous Releases] - Pre-Changelog
@@ -168,7 +168,7 @@ If upgrading from a previous version:
 
 #### Breaking Changes
 
-- **Branch Structure**: `clean-main` branch has been merged into `main`
+- **Branch Structure**: Unified development on standard `main` branch
 - **Workflow Commands**: New git workflow commands replace manual git operations
 - **Setup Process**: New automated setup replaces manual configuration steps
 

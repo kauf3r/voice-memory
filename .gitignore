@@ -63,3 +63,4 @@ audio-exports/processed/
 .git.corrupted/
 node_modules/
 .next/
+backup/
