@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useAuth } from '@/lib/hooks/use-auth'
+import { useAuth } from '@/app/components/AuthProvider'
+import { supabase } from '@/lib/supabase'
 import { RetryRequest } from '@/lib/types'
 
 interface RetryStuckButtonProps {
@@ -10,7 +11,7 @@ interface RetryStuckButtonProps {
 }
 
 export function RetryStuckButton({ onSuccess, onError }: RetryStuckButtonProps) {
-  const { getAccessToken } = useAuth()
+  const { user } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [lastResult, setLastResult] = useState<string | null>(null)
@@ -20,13 +21,13 @@ export function RetryStuckButton({ onSuccess, onError }: RetryStuckButtonProps) 
       setIsLoading(true)
       setLastResult(null)
 
-      const token = await getAccessToken()
+      const { data: { session } } = await supabase.auth.getSession()
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       }
 
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
       }
 
       const retryRequest: RetryRequest = {

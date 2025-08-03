@@ -61,7 +61,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: systemFonts }}>
+      <body style={{ fontFamily: systemFonts }} suppressHydrationWarning={true}>
         <ErrorBoundary>
           <AuthProvider>
             <ToastProvider>

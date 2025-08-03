@@ -255,6 +255,7 @@ export default function TrelloExportModal({ tasksCount, onClose }: TrelloExportM
               <input
                 type="text"
                 id="boardName"
+                name="boardName"
                 value={options.boardName}
                 onChange={(e) => setOptions(prev => ({ ...prev, boardName: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
@@ -272,6 +273,8 @@ export default function TrelloExportModal({ tasksCount, onClose }: TrelloExportM
                 <label className="flex items-center">
                   <input
                     type="checkbox"
+                    id="trello-my-tasks"
+                    name="trello-my-tasks"
                     checked={options.taskTypes.includes('myTasks')}
                     onChange={(e) => {
                       const newTypes = e.target.checked
@@ -281,12 +284,15 @@ export default function TrelloExportModal({ tasksCount, onClose }: TrelloExportM
                     }}
                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                     disabled={isExporting}
+                    aria-label="Include my tasks in Trello export"
                   />
                   <span className="ml-2 text-sm text-gray-700">My Tasks</span>
                 </label>
                 <label className="flex items-center">
                   <input
                     type="checkbox"
+                    id="trello-delegated-tasks"
+                    name="trello-delegated-tasks"
                     checked={options.taskTypes.includes('delegatedTasks')}
                     onChange={(e) => {
                       const newTypes = e.target.checked
@@ -307,10 +313,13 @@ export default function TrelloExportModal({ tasksCount, onClose }: TrelloExportM
               <label className="flex items-center">
                 <input
                   type="checkbox"
+                  id="trello-include-completed"
+                  name="trello-include-completed"
                   checked={options.includeCompleted}
                   onChange={(e) => setOptions(prev => ({ ...prev, includeCompleted: e.target.checked }))}
                   className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   disabled={isExporting}
+                  aria-label="Include completed tasks in Trello export"
                 />
                 <span className="ml-2 text-sm text-gray-700">Include completed tasks</span>
               </label>
@@ -327,6 +336,7 @@ export default function TrelloExportModal({ tasksCount, onClose }: TrelloExportM
                   <input
                     type="date"
                     id="startDate"
+                    name="startDate"
                     value={options.dateRange?.start || ''}
                     onChange={(e) => setOptions(prev => ({
                       ...prev,
@@ -344,6 +354,7 @@ export default function TrelloExportModal({ tasksCount, onClose }: TrelloExportM
                   <input
                     type="date"
                     id="endDate"
+                    name="endDate"
                     value={options.dateRange?.end || ''}
                     onChange={(e) => setOptions(prev => ({
                       ...prev,

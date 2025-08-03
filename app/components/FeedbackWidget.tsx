@@ -137,6 +137,7 @@ export default function FeedbackWidget({ className = '', isVisible = true }: Fee
             </label>
             <textarea
               id="feedback-message"
+              name="feedback-message"
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               placeholder={
@@ -159,6 +160,7 @@ export default function FeedbackWidget({ className = '', isVisible = true }: Fee
               </label>
               <input
                 id="feedback-email"
+                name="feedback-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

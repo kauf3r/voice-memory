@@ -80,9 +80,15 @@ export function createServiceClient() {
   )
 }
 
-// Fixed authentication helper using SERVICE_KEY for server-side operations
+// Legacy authentication helper using SERVICE_KEY (DEPRECATED - use getUserScopedClient instead)
 export async function getAuthenticatedUser(token: string) {
-  console.log('🔐 Server-side auth validation starting')
+  console.log('⚠️ Using deprecated getAuthenticatedUser - migrate to getUserScopedClient')
+  return getUserScopedClient(token)
+}
+
+// User-scoped authentication helper (replaces SERVICE_KEY approach)
+export async function getUserScopedClient(token: string) {
+  console.log('🔐 Creating user-scoped client')
   
   // Basic validation
   if (!token || typeof token !== 'string') {
@@ -94,9 +100,9 @@ export async function getAuthenticatedUser(token: string) {
     }
   }
   
-  // Environment check - SERVICE_KEY is critical for server-side auth
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-    console.error('❌ Missing Supabase SERVICE_KEY for server-side operations')
+  // Environment check
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    console.error('❌ Missing Supabase environment variables')
     return { 
       user: null, 
       error: { message: 'Server configuration error' } as any,
@@ -105,44 +111,46 @@ export async function getAuthenticatedUser(token: string) {
   }
   
   try {
-    console.log('🔧 Creating service client for JWT validation')
-    
-    // Use SERVICE_KEY for server-side operations - this is critical for RLS policy context
-    const serviceClient = createClient(
+    // Create user-scoped client with the provided token
+    const userClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY, // ← KEY FIX: Use service key, not anon key
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       {
         auth: {
           autoRefreshToken: false,
           persistSession: false
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         }
       }
     )
     
-    console.log('🔍 Validating JWT token with service client')
+    console.log('🔍 Validating user with user-scoped client')
     
-    // Validate JWT token using service key - this establishes proper auth context
-    const { data: { user }, error } = await serviceClient.auth.getUser(token)
+    // Validate user through user-scoped client (respects RLS)
+    const { data: { user }, error } = await userClient.auth.getUser()
     
     console.log('📊 Auth validation result:', {
       hasUser: !!user,
       userId: user?.id?.substring(0, 8) + '...',
       userEmail: user?.email,
-      errorMessage: error?.message,
-      errorStatus: error?.status
+      errorMessage: error?.message
     })
     
     if (error) {
-      console.error('🚨 JWT validation failed:', error.message)
+      console.error('🚨 User validation failed:', error.message)
       return { 
         user: null, 
-        error: { message: `JWT validation failed: ${error.message}` } as any,
+        error: { message: `User validation failed: ${error.message}` } as any,
         client: null 
       }
     }
     
     if (!user) {
-      console.error('⚠️ No user found in JWT token')
+      console.error('⚠️ No user found in token')
       return { 
         user: null, 
         error: { message: 'No user found in token' } as any,
@@ -150,10 +158,10 @@ export async function getAuthenticatedUser(token: string) {
       }
     }
     
-    console.log('✅ Server-side authentication successful for:', user.email)
+    console.log('✅ User-scoped authentication successful for:', user.email)
     
-    // Return service client for database operations - bypasses RLS when needed
-    return { user, error: null, client: serviceClient }
+    // Return user-scoped client - respects RLS policies
+    return { user, error: null, client: userClient }
     
   } catch (error) {
     console.error('❌ Server-side auth exception:', error)

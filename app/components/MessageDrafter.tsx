@@ -162,9 +162,12 @@ export default function MessageDrafter({ messages = [], className = '' }: Messag
                 </label>
                 <input
                   type="text"
+                  id="message-recipient"
+                  name="recipient"
                   value={editedMessage.recipient}
                   onChange={(e) => setEditedMessage({ ...editedMessage, recipient: e.target.value })}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  aria-label="Message recipient"
                 />
               </div>
               <div>
@@ -173,9 +176,12 @@ export default function MessageDrafter({ messages = [], className = '' }: Messag
                 </label>
                 <input
                   type="text"
+                  id="message-subject"
+                  name="subject"
                   value={editedMessage.subject}
                   onChange={(e) => setEditedMessage({ ...editedMessage, subject: e.target.value })}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  aria-label="Message subject"
                 />
               </div>
               <div>
@@ -183,10 +189,13 @@ export default function MessageDrafter({ messages = [], className = '' }: Messag
                   Message Body
                 </label>
                 <textarea
+                  id="message-body"
+                  name="body"
                   value={editedMessage.body}
                   onChange={(e) => setEditedMessage({ ...editedMessage, body: e.target.value })}
                   rows={8}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  aria-label="Message body"
                 />
               </div>
               <div className="flex justify-end gap-2">

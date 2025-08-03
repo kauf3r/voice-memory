@@ -212,12 +212,16 @@ export default function SearchBar({
         <input
           ref={inputRef}
           type="text"
+          id="search-input"
+          name="search"
           value={query}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => query && setShowResults(true)}
           placeholder={placeholder}
           className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
+          aria-label="Search notes, transcriptions, and analysis"
+          role="searchbox"
         />
 
         {query && (

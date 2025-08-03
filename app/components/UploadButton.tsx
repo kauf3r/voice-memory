@@ -269,10 +269,13 @@ export default function UploadButton({
       <input
         ref={fileInputRef}
         type="file"
+        id="audio-file-upload"
+        name="audio-files"
         accept={ACCEPTED_AUDIO_TYPES.join(',')}
         multiple={multiple}
         onChange={handleFileInput}
         className="hidden"
+        aria-label="Upload audio files"
       />
 
       <div
