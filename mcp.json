@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["playwright", "test", "--list"],
+      "env": {}
+    },
+    "supabase": {
+      "command": "node",
+      "args": ["scripts/mcp-supabase-server.js"],
+      "env": {
+        "NEXT_PUBLIC_SUPABASE_URL": "https://[supabase-ref].supabase.co",
+        "SUPABASE_SERVICE_KEY": "[supabase-jwt-redacted]"
+      }
+    },
+    "file-system": {
+      "command": "node",
+      "args": ["-e", "console.log('File system access available')"],
+      "env": {}
+    }
+  }
+} 

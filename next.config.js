@@ -1,100 +1,97 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Production-optimized configuration
-  serverExternalPackages: ['@supabase/supabase-js'],
-
-  // Production optimizations
-  compress: process.env.NODE_ENV === 'production',
-  poweredByHeader: false,
-  
-  // Auto-generated deployment ID - no manual version bumping needed
-  env: {
-    DEPLOYMENT_ID: Date.now().toString(),
-    CACHE_BUST: Math.random().toString(36).substring(7),
-  },
-  
-  // Disable Fast Refresh to force full reload
+  // Enable experimental features for better performance
   experimental: {
-    forceSwcTransforms: true,
+    // optimizeCss: true, // Disabled due to CSS compilation error
   },
-  
-  // Force rebuild by changing webpack config
-  webpack: (config, { isServer }) => {
-    config.cache = false
-    return config
-  },
-  
+
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
-    minimumCacheTTL: 60 * 60 * 24 * 7, // 7 days
-    dangerouslyAllowSVG: true,
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
-  
-  // Disable static generation for dynamic pages
-  trailingSlash: false,
-  
-  // Headers for both development and production
+
+  // Compression
+  compress: true,
+
+  // Bundle analyzer (only in development)
+  ...(process.env.ANALYZE === 'true' && {
+    webpack: (config) => {
+      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
+      config.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          openAnalyzer: false,
+        })
+      )
+      return config
+    },
+  }),
+
+  // Headers for caching and security
   async headers() {
-    // Add no-cache headers for development to prevent API caching issues
-    if (process.env.NODE_ENV === 'development') {
-      return [
-        {
-          source: '/api/(.*)',
-          headers: [
-            {
-              key: 'Cache-Control',
-              value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
-            },
-            {
-              key: 'Pragma',
-              value: 'no-cache',
-            },
-            {
-              key: 'Expires',
-              value: '0',
-            },
-          ],
-        },
-      ]
-    }
-    
     return [
+      {
+        // Static assets caching
+        source: '/:path*\\.(ico|png|jpg|jpeg|gif|webp|svg|woff|woff2|eot|ttf|otf)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable', // 1 year
+          },
+        ],
+      },
       {
         // API routes - no caching for dynamic content
         source: '/api/(.*)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'no-store, no-cache, must-revalidate',
+            value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
           },
           {
-            key: 'Access-Control-Allow-Origin',
-            value: 'https://voice-memory-tau.vercel.app',
+            key: 'Pragma',
+            value: 'no-cache',
           },
           {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'X-Requested-With, Content-Type, Authorization',
+            key: 'Expires',
+            value: '0',
           },
         ],
       },
       {
-        // Static assets - aggressive caching
-        source: '/(.*)\\.(ico|png|jpg|jpeg|gif|webp|svg|css|js)',
+        // HTML pages - short cache with revalidation
+        source: '/:path((?!api|_next|favicon\\.ico).*)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: 'public, max-age=300, stale-while-revalidate=60', // 5 minutes
           },
         ],
       },
       {
-        // Security headers for all pages
+        // JavaScript and CSS bundles
+        source: '/_next/static/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable', // 1 year
+          },
+        ],
+      },
+      {
+        // Service worker
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, must-revalidate',
+          },
+        ],
+      },
+      {
+        // Security headers for all routes
         source: '/(.*)',
         headers: [
           {
@@ -110,36 +107,15 @@ const nextConfig = {
             value: 'strict-origin-when-cross-origin',
           },
           {
-            key: 'X-XSS-Protection',
-            value: '1; mode=block',
-          },
-          {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), payment=()',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com", 
-              "img-src 'self' data: https:",
-              "font-src 'self' data: https://fonts.gstatic.com",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com",
-              "media-src 'self' blob:",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "frame-ancestors 'none'",
-            ].join('; '),
+            value: 'camera=(), microphone=(), geolocation=()',
           },
         ],
       },
     ]
   },
 
-  // Production redirects
+  // Redirects
   async redirects() {
     return [
       {
@@ -150,16 +126,19 @@ const nextConfig = {
     ]
   },
 
+  // Performance optimizations
+  poweredByHeader: false,
+  
   // Environment-specific optimizations
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
-  // Temporarily removed standalone output for debugging
-  // output: 'standalone',
+  ...(process.env.NODE_ENV === 'production' && {
+    output: 'standalone',
+    eslint: {
+      ignoreDuringBuilds: true,
+    },
+    typescript: {
+      ignoreBuildErrors: true,
+    },
+  }),
 }
 
-module.exports = nextConfig// Force deployment Fri Aug  1 19:22:26 PDT 2025
+module.exports = nextConfig

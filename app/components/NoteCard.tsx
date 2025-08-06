@@ -28,7 +28,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
   const [isExpanded, setIsExpanded] = useState(false)
 
   // Custom hooks for functionality
-  const { isDeleting, isRetrying, handleDelete, handleRetry } = useNoteActions({
+  const { isDeleting, isRetrying, isProcessing: isProcessingNow, handleDelete, handleRetry, handleProcessNow } = useNoteActions({
     noteId: note.id,
     onDelete,
     onRefresh,
@@ -69,7 +69,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
         sentiment={sentiment}
         sentimentColorClasses={sentiment ? getSentimentColor(sentiment.classification) : ''}
         processingAttempts={processingAttempts}
-        isProcessing={isProcessing}
+        isProcessing={isProcessing || isProcessingNow}
         hasError={hasError}
         errorSeverity={errorSeverity}
         errorMessage={note.error_message}
@@ -78,7 +78,9 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
         isDeleting={isDeleting}
         onRetry={handleRetry}
         onDelete={handleDelete}
+        onProcessNow={handleProcessNow}
         formatDuration={formatDuration}
+        showProcessButton={!note.processed_at && !isProcessing && !hasError}
       />
 
       {/* Enhanced Error Display */}

@@ -1,30 +1,28 @@
-import { memo } from 'react'
+'use client'
 
 interface NoteTopicProps {
   primaryTopic: string
   minorTopics: string[]
 }
 
-function NoteTopic({ primaryTopic, minorTopics }: NoteTopicProps) {
+export default function NoteTopic({ primaryTopic, minorTopics }: NoteTopicProps) {
   return (
     <div className="mb-4">
-      <h3 className="text-lg font-medium text-gray-900 mb-1">
-        {primaryTopic}
-      </h3>
-      {minorTopics.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {minorTopics.map((topic, index) => (
-            <span
-              key={index}
-              className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800"
-            >
-              {topic}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="flex items-center space-x-2">
+        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
+          {primaryTopic}
+        </span>
+        {minorTopics.slice(0, 2).map((topic, index) => (
+          <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">
+            {topic}
+          </span>
+        ))}
+        {minorTopics.length > 2 && (
+          <span className="text-gray-500 text-xs">
+            +{minorTopics.length - 2} more
+          </span>
+        )}
+      </div>
     </div>
   )
 }
-
-export default memo(NoteTopic)

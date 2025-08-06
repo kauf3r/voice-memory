@@ -1,59 +1,59 @@
+'use client'
+
 import { useMemo } from 'react'
 import { Note } from '@/lib/types'
 
 export function useNoteContent(note: Note) {
-  return useMemo(() => {
-    const formatDuration = (seconds: number | null) => {
-      if (!seconds) return 'Unknown'
-      const minutes = Math.floor(seconds / 60)
-      const remainingSeconds = seconds % 60
-      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  const formatDuration = (seconds?: number): string => {
+    if (!seconds) return 'Unknown duration'
+    
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    
+    if (minutes === 0) {
+      return `${remainingSeconds}s`
+    }
+    
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
+  const quickStats = useMemo(() => {
+    if (!note.analysis) {
+      return { myTasks: 0, keyIdeas: 0, messages: 0 }
     }
 
-    const getQuickStats = () => {
-      if (!note.analysis) {
-        return {
-          myTasks: 0,
-          keyIdeas: 0,
-          messages: 0,
-        }
-      }
+    const analysis = note.analysis
+    const myTasks = analysis.myTasks?.length || 0
+    const keyIdeas = analysis.keyIdeas?.length || 0
+    const messages = analysis.messages?.length || 0
 
-      return {
-        myTasks: note.analysis.tasks?.myTasks?.length || 0,
-        keyIdeas: note.analysis.keyIdeas?.length || 0,
-        messages: note.analysis.messagesToDraft?.length || 0,
-      }
-    }
+    return { myTasks, keyIdeas, messages }
+  }, [note.analysis])
 
-    const getPrimaryTopic = () => {
-      return note.analysis?.focusTopics?.primary || null
-    }
+  const primaryTopic = useMemo(() => {
+    if (!note.analysis?.topics?.length) return null
+    return note.analysis.topics[0]
+  }, [note.analysis])
 
-    const getMinorTopics = () => {
-      return note.analysis?.focusTopics?.minor || []
-    }
+  const minorTopics = useMemo(() => {
+    if (!note.analysis?.topics?.length) return []
+    return note.analysis.topics.slice(1)
+  }, [note.analysis])
 
-    const getSentiment = () => {
-      return note.analysis?.sentiment || null
-    }
+  const sentiment = useMemo(() => {
+    return note.analysis?.sentiment || null
+  }, [note.analysis])
 
-    const hasFullAnalysis = !!(note.transcription && note.analysis)
-    const hasPartialContent = !!note.transcription && !note.analysis
-    const quickStats = getQuickStats()
+  const hasFullAnalysis = useMemo(() => {
+    return !!(note.analysis && note.transcription)
+  }, [note.analysis, note.transcription])
 
-    return {
-      formatDuration,
-      getQuickStats,
-      getPrimaryTopic,
-      getMinorTopics,
-      getSentiment,
-      hasFullAnalysis,
-      hasPartialContent,
-      quickStats,
-      primaryTopic: getPrimaryTopic(),
-      minorTopics: getMinorTopics(),
-      sentiment: getSentiment(),
-    }
-  }, [note])
+  return {
+    formatDuration,
+    quickStats,
+    primaryTopic,
+    minorTopics,
+    sentiment,
+    hasFullAnalysis
+  }
 }

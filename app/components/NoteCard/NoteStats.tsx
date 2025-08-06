@@ -1,4 +1,4 @@
-import { memo } from 'react'
+'use client'
 
 interface NoteStatsProps {
   myTasks: number
@@ -6,29 +6,27 @@ interface NoteStatsProps {
   messages: number
 }
 
-function NoteStats({ myTasks, keyIdeas, messages }: NoteStatsProps) {
+export default function NoteStats({ myTasks, keyIdeas, messages }: NoteStatsProps) {
   return (
-    <div className="grid grid-cols-3 gap-4 mb-4">
-      <div className="text-center">
-        <p className="text-2xl font-semibold text-blue-600">
-          {myTasks}
-        </p>
-        <p className="text-xs text-gray-500">My Tasks</p>
-      </div>
-      <div className="text-center">
-        <p className="text-2xl font-semibold text-green-600">
-          {keyIdeas}
-        </p>
-        <p className="text-xs text-gray-500">Key Ideas</p>
-      </div>
-      <div className="text-center">
-        <p className="text-2xl font-semibold text-purple-600">
-          {messages}
-        </p>
-        <p className="text-xs text-gray-500">Messages</p>
-      </div>
+    <div className="flex items-center space-x-4 text-sm text-gray-600 mb-4">
+      {myTasks > 0 && (
+        <span className="flex items-center space-x-1">
+          <span>📋</span>
+          <span>{myTasks} tasks</span>
+        </span>
+      )}
+      {keyIdeas > 0 && (
+        <span className="flex items-center space-x-1">
+          <span>💡</span>
+          <span>{keyIdeas} ideas</span>
+        </span>
+      )}
+      {messages > 0 && (
+        <span className="flex items-center space-x-1">
+          <span>💬</span>
+          <span>{messages} messages</span>
+        </span>
+      )}
     </div>
   )
 }
-
-export default memo(NoteStats)

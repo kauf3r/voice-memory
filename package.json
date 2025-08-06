@@ -50,6 +50,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.1",
     "@next/bundle-analyzer": "^15.4.5",
     "@playwright/test": "^1.54.1",
     "@testing-library/jest-dom": "^6.6.3",

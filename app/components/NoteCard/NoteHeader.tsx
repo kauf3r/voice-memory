@@ -1,41 +1,37 @@
-import { memo } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import NoteStatus from './NoteStatus'
-import NoteBadges from './NoteBadges'
-import NoteActions from './NoteActions'
+'use client'
+
+import { useState } from 'react'
 
 interface NoteHeaderProps {
   recordedAt: string
-  durationSeconds?: number | null
-  processingStartedAt?: string | null
-  // Status props
-  statusIcon: JSX.Element
+  durationSeconds?: number
+  processingStartedAt?: string
+  statusIcon: string
   statusText: string
   statusColorClasses: string
-  // Badge props
-  sentiment?: { classification: string }
+  sentiment?: any
   sentimentColorClasses: string
-  processingAttempts: number
+  processingAttempts?: number
   isProcessing: boolean
-  // Actions props
   hasError: boolean
-  errorSeverity: string
+  errorSeverity: 'low' | 'medium' | 'high'
   errorMessage?: string
   lastErrorAt?: string
   isRetrying: boolean
   isDeleting: boolean
   onRetry: () => void
   onDelete: () => void
-  // Utility functions
-  formatDuration: (seconds: number | null) => string
+  onProcessNow?: () => void
+  formatDuration: (seconds?: number) => string
+  showProcessButton?: boolean
 }
 
-function NoteHeader({
-  recordedAt,
-  durationSeconds,
+export default function NoteHeader({ 
+  recordedAt, 
+  durationSeconds, 
   processingStartedAt,
-  statusIcon,
-  statusText,
+  statusIcon, 
+  statusText, 
   statusColorClasses,
   sentiment,
   sentimentColorClasses,
@@ -49,51 +45,80 @@ function NoteHeader({
   isDeleting,
   onRetry,
   onDelete,
+  onProcessNow,
   formatDuration,
+  showProcessButton = false
 }: NoteHeaderProps) {
+  const [isProcessingNow, setIsProcessingNow] = useState(false)
+  
+  const handleProcessNow = async () => {
+    if (!onProcessNow || isProcessingNow) return
+    
+    setIsProcessingNow(true)
+    try {
+      await onProcessNow()
+    } finally {
+      setIsProcessingNow(false)
+    }
+  }
+
   return (
-    <div className="flex justify-between items-start mb-4">
+    <div className="flex items-start justify-between mb-4">
       <div className="flex-1">
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <NoteStatus
-            icon={statusIcon}
-            text={statusText}
-            colorClasses={statusColorClasses}
-          />
-          <NoteBadges
-            sentiment={sentiment}
-            sentimentColorClasses={sentimentColorClasses}
-            processingAttempts={processingAttempts}
-            isProcessing={isProcessing}
-          />
+        <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+          <span>{new Date(recordedAt).toLocaleString()}</span>
+          {durationSeconds && (
+            <>
+              <span>•</span>
+              <span>{formatDuration(durationSeconds)}</span>
+            </>
+          )}
         </div>
-        <p className="text-sm text-gray-500">
-          {formatDistanceToNow(new Date(recordedAt), { addSuffix: true })}
-        </p>
-        {durationSeconds && (
-          <p className="text-sm text-gray-500">
-            Duration: {formatDuration(durationSeconds)}
-          </p>
-        )}
-        {processingStartedAt && (
-          <p className="text-xs text-gray-400">
-            Processing started: {formatDistanceToNow(new Date(processingStartedAt), { addSuffix: true })}
-          </p>
+        
+        <div className={`flex items-center space-x-2 text-sm ${statusColorClasses}`}>
+          <span>{statusIcon}</span>
+          <span>{statusText}</span>
+          {processingAttempts && processingAttempts > 1 && (
+            <span className="text-orange-600">({processingAttempts} attempts)</span>
+          )}
+        </div>
+        
+        {sentiment && (
+          <div className={`text-sm mt-1 ${sentimentColorClasses}`}>
+            Sentiment: {sentiment.classification} ({Math.round(sentiment.confidence * 100)}%)
+          </div>
         )}
       </div>
-      <NoteActions
-        hasError={hasError}
-        errorSeverity={errorSeverity}
-        errorMessage={errorMessage}
-        lastErrorAt={lastErrorAt}
-        isRetrying={isRetrying}
-        isDeleting={isDeleting}
-        isProcessing={isProcessing}
-        onRetry={onRetry}
-        onDelete={onDelete}
-      />
+      
+      <div className="flex items-center space-x-2">
+        {showProcessButton && !isProcessing && !hasError && (
+          <button
+            onClick={handleProcessNow}
+            disabled={isProcessingNow}
+            className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isProcessingNow ? 'Processing...' : 'Process Now'}
+          </button>
+        )}
+        
+        {hasError && (
+          <button
+            onClick={onRetry}
+            disabled={isRetrying}
+            className="px-3 py-1 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 transition-colors"
+          >
+            {isRetrying ? 'Retrying...' : 'Retry'}
+          </button>
+        )}
+        
+        <button
+          onClick={onDelete}
+          disabled={isDeleting}
+          className="px-2 py-1 text-sm text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+        >
+          {isDeleting ? 'Deleting...' : 'Delete'}
+        </button>
+      </div>
     </div>
   )
 }
-
-export default memo(NoteHeader)
