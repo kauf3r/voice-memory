@@ -113,7 +113,9 @@ class CircuitBreaker {
   }
 }
 
-export class ProcessingService {
+// Legacy ProcessingService class removed - using refactored version from ./processing/ProcessingService
+// This class is now imported and re-exported at the top of the file
+class LegacyProcessingService {
   private supabase = createServiceClient()
   private circuitBreaker = new CircuitBreaker()
   private readonly PROCESSING_TIMEOUT_MINUTES = parseInt(process.env.PROCESSING_TIMEOUT_MINUTES || '15')

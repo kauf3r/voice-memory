@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useAuth } from './AuthProvider'
 import { uploadAudioFile } from '@/lib/storage'
 import { supabase } from '@/lib/supabase'
@@ -33,6 +33,7 @@ const ACCEPTED_AUDIO_TYPES = [
 ]
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
+const CHUNK_SIZE = 1024 * 1024 // 1MB per chunk
 
 export default function UploadButton({
   onUploadComplete,
@@ -45,7 +46,21 @@ export default function UploadButton({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const activeUploadsRef = useRef<Set<XMLHttpRequest>>(new Set())
   const { user } = useAuth()
+
+  // Cleanup function for component unmount
+  useEffect(() => {
+    return () => {
+      // Cancel all active uploads on unmount
+      activeUploadsRef.current.forEach(xhr => {
+        if (xhr.readyState !== XMLHttpRequest.DONE) {
+          xhr.abort()
+        }
+      })
+      activeUploadsRef.current.clear()
+    }
+  }, [])
 
   const validateFile = useCallback((file: File): string | null => {
     // Enhanced validation with M4A special handling
@@ -65,7 +80,7 @@ export default function UploadButton({
     return null
   }, [])
 
-  const uploadFile = useCallback(async (file: File) => {
+  const uploadFileChunked = useCallback(async (file: File) => {
     if (!user) {
       setError('You must be logged in to upload files.')
       return
@@ -84,26 +99,7 @@ export default function UploadButton({
     const fileId = `${file.name}-${Date.now()}`
     setUploadProgress(prev => ({ ...prev, [fileId]: 0 }))
 
-    // Initialize progress interval outside try block so it's accessible in catch
-    let progressInterval: NodeJS.Timeout | null = null
-
     try {
-      // Create FormData for the upload
-      const formData = new FormData()
-      formData.append('file', file)
-
-      // Simulate progress updates
-      progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          const currentProgress = prev[fileId] || 0
-          if (currentProgress >= 95) {
-            if (progressInterval) clearInterval(progressInterval)
-            return prev
-          }
-          return { ...prev, [fileId]: currentProgress + 10 }
-        })
-      }, 200)
-
       // Get the current session for auth
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
@@ -112,77 +108,11 @@ export default function UploadButton({
         throw new Error('No active session. Please log in again.')
       }
       
-      // Create AbortController for timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => {
-        controller.abort()
-        console.error('Upload timeout after 30 seconds')
-      }, 30000) // 30 second timeout
+      console.log('Starting chunked upload for:', file.name, `(${(file.size / 1024 / 1024).toFixed(1)}MB)`)
       
-      console.log('Starting upload request for:', file.name)
-      
-      // Upload via API route
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        signal: controller.signal
-      }).catch(error => {
-        clearTimeout(timeoutId)
-        if (error.name === 'AbortError') {
-          throw new Error('Upload timed out. Please try again.')
-        }
-        throw error
-      })
-      
-      clearTimeout(timeoutId)
-      console.log('Upload response received:', response.status, response.statusText)
-
-      if (progressInterval) clearInterval(progressInterval)
-      setUploadProgress(prev => ({ ...prev, [fileId]: 100 }))
-
-      if (!response.ok) {
-        console.error('Upload failed with status:', response.status)
-        let errorData
-        try {
-          errorData = await response.json()
-          console.error('Error data:', errorData)
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError)
-          errorData = { error: 'Failed to parse server response' }
-        }
-        
-        // Enhanced error handling with more details
-        if (response.status === 413) {
-          // File too large
-          throw new Error(
-            errorData.details || 
-            `File too large. Maximum size is ${errorData.maxSizeMB || 25}MB. Your file is ${errorData.currentSizeMB}MB.`
-          )
-        } else if (response.status === 507) {
-          // Storage quota exceeded
-          throw new Error(
-            errorData.details || 
-            `Storage quota exceeded. You have ${errorData.currentCount}/${errorData.maxCount} notes.`
-          )
-        } else {
-          throw new Error(errorData.error || 'Upload failed')
-        }
-      }
-
-      console.log('Parsing successful response...')
-      let result
-      try {
-        result = await response.json()
-        console.log('Upload result:', result)
-      } catch (parseError) {
-        console.error('Failed to parse success response:', parseError)
-        throw new Error('Server response was invalid')
-      }
-      
-      if (result.success && result.url) {
+      // Use direct upload with real progress tracking
+      const result = await uploadFileDirectly(file, session.access_token, fileId)
+      if (result.success) {
         console.log('Upload completed successfully, URL:', result.url)
         onUploadComplete?.()
         
@@ -194,12 +124,10 @@ export default function UploadButton({
             return newProgress
           })
         }, 2000)
-      } else {
-        throw new Error('Upload response was invalid')
       }
+      
     } catch (error) {
       console.error('Upload error caught:', error)
-      if (progressInterval) clearInterval(progressInterval)
       setUploadProgress(prev => {
         const newProgress = { ...prev }
         delete newProgress[fileId]
@@ -208,6 +136,87 @@ export default function UploadButton({
       setError(error instanceof Error ? error.message : 'Upload failed')
     }
   }, [user, validateFile, onUploadStart, onUploadComplete])
+  
+  const uploadFileDirectly = useCallback(async (file: File, accessToken: string, fileId: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    // Create XMLHttpRequest for real progress tracking
+    return new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      
+      // Track this upload
+      activeUploadsRef.current.add(xhr)
+      
+      // Cleanup function
+      const cleanup = () => {
+        activeUploadsRef.current.delete(xhr)
+      }
+      
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 100
+          setUploadProgress(prev => ({ ...prev, [fileId]: Math.min(progress, 99) }))
+        }
+      })
+      
+      xhr.addEventListener('load', () => {
+        cleanup()
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const result = JSON.parse(xhr.responseText)
+            resolve(result)
+          } catch (error) {
+            reject(new Error('Server response was invalid'))
+          }
+        } else {
+          let errorData
+          try {
+            errorData = JSON.parse(xhr.responseText)
+          } catch {
+            errorData = { error: 'Upload failed' }
+          }
+          
+          if (xhr.status === 413) {
+            reject(new Error(
+              errorData.details || 
+              `File too large. Maximum size is ${errorData.maxSizeMB || 25}MB.`
+            ))
+          } else if (xhr.status === 507) {
+            reject(new Error(
+              errorData.details || 
+              `Storage quota exceeded.`
+            ))
+          } else {
+            reject(new Error(errorData.error || 'Upload failed'))
+          }
+        }
+      })
+      
+      xhr.addEventListener('error', () => {
+        cleanup()
+        reject(new Error('Network error during upload'))
+      })
+      
+      xhr.addEventListener('timeout', () => {
+        cleanup()
+        reject(new Error('Upload timed out. Please try again.'))
+      })
+      
+      xhr.addEventListener('abort', () => {
+        cleanup()
+        reject(new Error('Upload was cancelled'))
+      })
+      
+      xhr.timeout = 60000 // 60 second timeout for direct uploads
+      xhr.open('POST', '/api/upload')
+      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
+      xhr.send(formData)
+    })
+  }, [])
+  
+  const uploadFile = uploadFileDirectly
 
   const handleFiles = useCallback(async (files: FileList) => {
     setIsUploading(true)
@@ -215,17 +224,19 @@ export default function UploadButton({
     const fileArray = Array.from(files)
     
     if (multiple) {
-      // Upload files in parallel
-      await Promise.all(fileArray.map(uploadFile))
+      // Upload files sequentially to avoid overwhelming browser memory
+      for (const file of fileArray) {
+        await uploadFileChunked(file)
+      }
     } else {
       // Upload single file
       if (fileArray.length > 0) {
-        await uploadFile(fileArray[0])
+        await uploadFileChunked(fileArray[0])
       }
     }
     
     setIsUploading(false)
-  }, [uploadFile, multiple])
+  }, [uploadFileChunked, multiple])
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files

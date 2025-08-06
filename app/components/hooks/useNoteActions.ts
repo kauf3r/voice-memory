@@ -1,4 +1,7 @@
+'use client'
+
 import { useState, useCallback } from 'react'
+import { useAuth } from '@/app/components/AuthProvider'
 import { supabase } from '@/lib/supabase'
 
 interface UseNoteActionsProps {
@@ -10,87 +13,91 @@ interface UseNoteActionsProps {
 export function useNoteActions({ noteId, onDelete, onRefresh }: UseNoteActionsProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isRetrying, setIsRetrying] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const { user } = useAuth()
 
   const handleDelete = useCallback(async () => {
-    if (!confirm('Are you sure you want to delete this note?')) {
-      return
-    }
+    if (!user || isDeleting) return
 
     setIsDeleting(true)
     try {
-      // Get the current session for auth
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session) {
-        throw new Error('Authentication required. Please log in.')
-      }
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', noteId)
+        .eq('user_id', user.id)
 
-      const response = await fetch(`/api/notes/${noteId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete note')
-      }
+      if (error) throw error
 
       onDelete?.(noteId)
+      onRefresh?.()
     } catch (error) {
       console.error('Delete error:', error)
-      alert(error instanceof Error ? error.message : 'Failed to delete note')
     } finally {
       setIsDeleting(false)
     }
-  }, [noteId, onDelete])
+  }, [user, noteId, onDelete, onRefresh, isDeleting])
 
   const handleRetry = useCallback(async () => {
-    if (!confirm('Retry processing this note?')) {
-      return
-    }
-
+    if (!user || isRetrying) return
+    
     setIsRetrying(true)
     try {
-      // Get the current session for auth
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session) {
-        throw new Error('Authentication required. Please log in.')
-      }
-
-      const response = await fetch('/api/process', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          noteId, 
-          forceReprocess: true 
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Failed to retry processing')
-      }
-
-      // Refresh the note data
+      await processNote()
       onRefresh?.()
     } catch (error) {
       console.error('Retry error:', error)
-      alert(error instanceof Error ? error.message : 'Failed to retry processing')
     } finally {
       setIsRetrying(false)
     }
-  }, [noteId, onRefresh])
+  }, [user, isRetrying, onRefresh])
+
+  const handleProcessNow = useCallback(async () => {
+    if (!user || isProcessing) return
+    
+    setIsProcessing(true)
+    try {
+      await processNote()
+      onRefresh?.()
+    } catch (error) {
+      console.error('Process now error:', error)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [user, isProcessing, onRefresh])
+
+  const processNote = useCallback(async () => {
+    if (!user) throw new Error('User not authenticated')
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('No active session')
+
+    const response = await fetch('/api/process', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        noteId: noteId,
+        forceReprocess: false
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Processing failed' }))
+      throw new Error(errorData.error || 'Processing failed')
+    }
+
+    return response.json()
+  }, [user, noteId])
 
   return {
     isDeleting,
     isRetrying,
+    isProcessing,
     handleDelete,
     handleRetry,
+    handleProcessNow
   }
 }

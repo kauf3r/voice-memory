@@ -1,13 +1,12 @@
-import { MetadataRoute } from 'next';
-import { config } from '../lib/config';
+import { MetadataRoute } from 'next'
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/api/', '/_next/', '/admin/'],
+      disallow: '/admin-dashboard/',
     },
-    sitemap: `${config.baseUrl}/sitemap.xml`,
-  };
+    sitemap: 'https://voice-memory.vercel.app/sitemap.xml',
+  }
 }
