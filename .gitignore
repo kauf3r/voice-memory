@@ -59,6 +59,8 @@ audio-exports/processed/
 
 # MCP configuration with sensitive data
 .mcp.json
+mcp.json
+scripts/mcp-supabase-server.js
 .claude/.git.backup/
 .git.corrupted/
 node_modules/
