@@ -9,12 +9,11 @@ enum ErrorTypeEnum {
   VALIDATION = 'validation',
   AUTHENTICATION = 'authentication',
   AUTHORIZATION = 'authorization',
-  NOT_FOUND = 'not_found',
   RATE_LIMIT = 'rate_limit',
-  QUOTA_EXCEEDED = 'quota_exceeded',
-  EXTERNAL_SERVICE = 'external_service',
+  OPENAI_ERROR = 'openai_error',
   STORAGE = 'storage_error',
   PROCESSING = 'processing_error',
+  DATABASE_ERROR = 'database_error',
   INTERNAL = 'server_error'
 }
 
@@ -30,9 +29,9 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
       statusCode: 401,
       response: {
         error: 'Authentication required',
+        type: ErrorTypeEnum.AUTHENTICATION,
         details: 'Please log in to continue',
         code: 'AUTH_REQUIRED',
-        timestamp: new Date().toISOString(),
         timestamp: new Date().toISOString()
       }
     }
@@ -46,6 +45,7 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
       statusCode: 403,
       response: {
         error: 'Access denied',
+        type: ErrorTypeEnum.AUTHORIZATION,
         details: 'You do not have permission to perform this action',
         code: 'ACCESS_DENIED',
         timestamp: new Date().toISOString()
@@ -53,14 +53,15 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
     }
   }
 
-  // Not found errors
+  // Not found errors - treat as database errors
   if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist') || 
       lowerMessage.includes('no rows returned')) {
     return {
-      type: ErrorTypeEnum.NOT_FOUND,
+      type: ErrorTypeEnum.DATABASE_ERROR,
       statusCode: 404,
       response: {
         error: 'Resource not found',
+        type: ErrorTypeEnum.DATABASE_ERROR,
         details: 'The requested note or resource could not be found',
         code: 'NOT_FOUND',
         timestamp: new Date().toISOString()
@@ -73,10 +74,11 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
         lowerMessage.includes('invalid file') || lowerMessage.includes('file too large') ||
         lowerMessage.includes('transcription failed') || lowerMessage.includes('analysis failed')) {
       return {
-        type: ErrorTypeEnum.EXTERNAL_SERVICE,
+        type: ErrorTypeEnum.OPENAI_ERROR,
         statusCode: 502,
         response: {
           error: 'External service error',
+          type: ErrorTypeEnum.OPENAI_ERROR,
           details: 'The processing service is temporarily unavailable. Please try again later.',
           code: 'EXTERNAL_SERVICE_ERROR',
           timestamp: new Date().toISOString()
@@ -92,22 +94,23 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
         statusCode: 429,
         response: {
           error: 'Rate limit exceeded',
+          type: ErrorTypeEnum.RATE_LIMIT,
           details: 'Too many requests. Please wait before trying again.',
           code: 'RATE_LIMIT_EXCEEDED',
-          retryAfter: 60, // 1 minute
           timestamp: new Date().toISOString()
         }
       }
     }
 
-    // Quota exceeded errors
+    // Quota exceeded errors - treat as rate limit errors
     if (lowerMessage.includes('quota exceeded') || lowerMessage.includes('processing quota') || 
         lowerMessage.includes('storage limit') || lowerMessage.includes('maximum')) {
       return {
-        type: ErrorTypeEnum.QUOTA_EXCEEDED,
+        type: ErrorTypeEnum.RATE_LIMIT,
         statusCode: 429,
         response: {
           error: 'Quota exceeded',
+          type: ErrorTypeEnum.RATE_LIMIT,
           details: 'You have reached your processing limit. Please wait or upgrade your plan.',
           code: 'QUOTA_EXCEEDED',
           timestamp: new Date().toISOString()
@@ -123,6 +126,7 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
       statusCode: 500,
       response: {
         error: 'Storage error',
+        type: ErrorTypeEnum.STORAGE,
         details: 'Unable to access the audio file. Please try again or contact support.',
         code: 'STORAGE_ERROR',
         timestamp: new Date().toISOString()
@@ -138,6 +142,7 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
       statusCode: 422,
       response: {
         error: 'Processing failed',
+        type: ErrorTypeEnum.PROCESSING,
         details: 'Unable to process the audio file. Please check the file format and try again.',
         code: 'PROCESSING_ERROR',
         timestamp: new Date().toISOString()
@@ -153,6 +158,7 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
       statusCode: 400,
       response: {
         error: 'Invalid request',
+        type: ErrorTypeEnum.VALIDATION,
         details: errorMessage,
         code: 'VALIDATION_ERROR',
         timestamp: new Date().toISOString()
@@ -166,6 +172,7 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
     statusCode: 500,
     response: {
       error: 'Internal server error',
+      type: ErrorTypeEnum.INTERNAL,
       details: 'An unexpected error occurred. Please try again later.',
       code: 'INTERNAL_ERROR',
       timestamp: new Date().toISOString()
@@ -183,8 +190,9 @@ function createErrorResponse(error: unknown, additionalData?: Partial<ErrorRespo
 
   // Add retry-after header for rate limit errors
   const headers: Record<string, string> = {}
-  if (type === ErrorTypeEnum.RATE_LIMIT && response.retryAfter) {
-    headers['Retry-After'] = response.retryAfter.toString()
+  if (type === ErrorTypeEnum.RATE_LIMIT) {
+    // Set a default retry-after of 60 seconds for rate limit errors
+    headers['Retry-After'] = '60'
   }
 
   console.error(`[${type}] Processing error:`, error)

@@ -82,7 +82,7 @@ const { searchTerm } = await request.json(); // No auth check
 
 **Exposed Key** (Now Revoked):
 ```
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZianN6dWdzdnJxeG9zYnRmZnF3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1Mjg4MDY1MSwiZXhwIjoyMDY4NDU2NjUxfQ.oP8xawEZ3Bz861P9cbaoNXB_Dx2bnorHD11fSbPXMWU
+[REDACTED - Key has been rotated and revoked]
 ```
 
 **Status**: ✅ **RESOLVED** - Files removed, key must be rotated
