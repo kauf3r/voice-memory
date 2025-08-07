@@ -82,7 +82,7 @@ const { searchTerm } = await request.json(); // No auth check
 
 **Exposed Key** (Now Revoked):
 ```
-[supabase-jwt-redacted]
+[REDACTED - Key has been rotated and revoked]
 ```
 
 **Status**: ✅ **RESOLVED** - Files removed, key must be rotated
