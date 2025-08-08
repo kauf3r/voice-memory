@@ -1,5 +1,5 @@
 /**
- * Comprehensive File Upload Security Validation (Production Version)
+ * Comprehensive File Upload Security Validation
  * 
  * Implements multiple layers of security for file uploads:
  * - MIME type validation
@@ -16,11 +16,6 @@ import crypto from 'crypto'
 const cryptoSubtle = typeof globalThis !== 'undefined' && globalThis.crypto?.subtle || crypto.webcrypto?.subtle
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : 
   { encode: (str: string) => Buffer.from(str, 'utf8') }
-
-// Validation levels - prevent complete security bypass in production
-type ValidationLevel = 'strict' | 'normal' | 'permissive'
-const VALIDATION_LEVEL = (process.env.NODE_ENV === 'production' ? 'normal' : 
-  (process.env.FILE_VALIDATION_LEVEL || 'normal')) as ValidationLevel
 
 // Security constants
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
@@ -92,9 +87,18 @@ export async function validateFileUpload(file: File): Promise<ValidationResult> 
     warnings: []
   }
 
+  console.log('🔍 Starting file validation for:', file.name)
+  console.log('📁 File details:', { 
+    name: file.name, 
+    type: file.type, 
+    size: file.size,
+    lastModified: new Date(file.lastModified).toISOString()
+  })
+
   try {
     // Basic file validation
     if (!file) {
+      console.log('❌ Validation failed: No file provided')
       result.errors.push('No file provided')
       result.valid = false
       return result
@@ -133,43 +137,21 @@ export async function validateFileUpload(file: File): Promise<ValidationResult> 
       result.warnings.push(...mimeValidation.warnings)
     }
 
-    // File signature validation (magic bytes) - Restricted in production
-    if (VALIDATION_LEVEL === 'permissive' && process.env.NODE_ENV !== 'production') {
-      // Only allow permissive mode in development
-      result.detectedMimeType = file.type || 'audio/unknown'
-      result.detectedExtension = getFileExtension(file.name)
+    // File signature validation (magic bytes)
+    const signatureValidation = await validateFileSignature(file)
+    if (!signatureValidation.valid) {
+      result.errors.push(...signatureValidation.errors)
+      result.valid = false
     } else {
-      const signatureValidation = await validateFileSignature(file)
-      if (!signatureValidation.valid) {
-        if (VALIDATION_LEVEL === 'strict') {
-          result.errors.push(...signatureValidation.errors)
-          result.valid = false
-        } else {
-          // In normal mode, treat signature validation as warnings
-          result.warnings.push(...signatureValidation.errors)
-          result.detectedMimeType = file.type || 'audio/unknown'
-          result.detectedExtension = getFileExtension(file.name)
-        }
-      } else {
-        result.detectedMimeType = signatureValidation.detectedMimeType
-        result.detectedExtension = signatureValidation.detectedExtension
-      }
+      result.detectedMimeType = signatureValidation.detectedMimeType
+      result.detectedExtension = signatureValidation.detectedExtension
     }
 
-    // Content security scan - Always perform in production
-    if (VALIDATION_LEVEL === 'permissive' && process.env.NODE_ENV !== 'production') {
-      // Only skip security scan in development permissive mode
-    } else {
-      const securityScan = await performSecurityScan(file)
-      if (!securityScan.safe) {
-        if (VALIDATION_LEVEL === 'strict') {
-          result.errors.push(`Security scan failed: ${securityScan.threats.join(', ')}`)
-          result.valid = false
-        } else {
-          // In normal mode, treat security scan as warnings for audio files
-          result.warnings.push(`Security scan concerns: ${securityScan.threats.join(', ')}`)
-        }
-      }
+    // Content security scan
+    const securityScan = await performSecurityScan(file)
+    if (!securityScan.safe) {
+      result.errors.push(`Security scan failed: ${securityScan.threats.join(', ')}`)
+      result.valid = false
     }
 
     // Generate file hash for integrity
@@ -203,23 +185,19 @@ function validateAndSanitizeFilename(filename: string): { valid: boolean; errors
     errors.push('Filename contains invalid path characters')
   }
 
-  // Check for dangerous filename patterns (more permissive)
+  // Check for dangerous filename patterns
   const dangerousPatterns = [
     /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i, // Windows reserved names
+    /^\./,  // Hidden files
+    /\s+$/, // Trailing spaces
     /[<>:"|?*\x00-\x1f]/g // Invalid characters
   ]
 
-  let hasDangerousPattern = false
   for (const pattern of dangerousPatterns) {
     if (pattern.test(filename)) {
-      hasDangerousPattern = true
+      errors.push('Filename contains dangerous characters or patterns')
       break
     }
-  }
-
-  // Only treat as error for truly dangerous patterns, not cosmetic issues
-  if (hasDangerousPattern) {
-    errors.push('Filename contains dangerous characters or patterns')
   }
 
   // Sanitize filename
@@ -326,23 +304,6 @@ async function validateFileSignature(file: File): Promise<{ valid: boolean; erro
     }
 
     if (!matchedSignature) {
-      // FALLBACK: If signature detection fails, check if file has valid extension and MIME type
-      // This helps with audio files that may have variations in their signature bytes
-      const extension = getFileExtension(file.name).toLowerCase()
-      const isValidExtension = ALLOWED_EXTENSIONS.includes(extension as AllowedExtension)
-      const isValidMimeType = file.type && (file.type.startsWith('audio/') || file.type.startsWith('video/'))
-      
-      if (isValidExtension && isValidMimeType) {
-        // Create a fallback signature result
-        const fallbackMimeType = file.type || `audio/${extension}`
-        return {
-          valid: true,
-          errors: [], // No errors in fallback mode
-          detectedMimeType: fallbackMimeType,
-          detectedExtension: extension
-        }
-      }
-      
       errors.push('File signature not recognized or file type not supported')
       return { valid: false, errors }
     }
