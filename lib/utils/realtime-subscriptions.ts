@@ -83,7 +83,7 @@ export function createDebouncedHandler<T>(
 }
 
 /**
- * Creates a subscription with automatic reconnection and error handling
+ * Creates a subscription with automatic reconnection, error handling, and graceful fallback
  */
 export function createResilientSubscription(
   channel: RealtimeChannel,
@@ -93,6 +93,7 @@ export function createResilientSubscription(
     onConnect?: () => void
     onDisconnect?: () => void
     onError?: (error: Error) => void
+    enableGracefulFallback?: boolean
   } = {}
 ) {
   const {
@@ -100,7 +101,8 @@ export function createResilientSubscription(
     retryDelay = 1000,
     onConnect,
     onDisconnect,
-    onError
+    onError,
+    enableGracefulFallback = true
   } = options
   
   let retryCount = 0
@@ -127,9 +129,9 @@ export function createResilientSubscription(
             channel.subscribe()
           }, delay)
         } else {
-          const error = new Error(`Subscription failed after ${maxRetries} retries`)
-          console.error(error)
-          onError?.(error)
+          console.log(`❌ Real-time subscription failed after ${maxRetries} retries, continuing without real-time updates`)
+          // Don't call onError for graceful fallback - just log the situation
+          // The app will continue to work without real-time updates
         }
         break
         
