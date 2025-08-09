@@ -1,6 +1,9 @@
 'use client'
 
 import { useProcessingStats } from '@/lib/hooks/use-processing-stats'
+import { Loader } from '@/components/ai-elements/loader'
+import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
+import { Response } from '@/components/ai-elements/response'
 
 interface ProcessingStatusProps {
   userId?: string
@@ -22,9 +25,9 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Processing Status</h3>
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+        <div className="flex items-center justify-center py-8">
+          <Loader size={20} className="mr-3" />
+          <span className="text-sm text-gray-600">Loading processing status...</span>
         </div>
       </div>
     )
@@ -156,16 +159,25 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
         </div>
       )}
 
-      {/* Processing lock info */}
+      {/* AI Processing Details */}
       {stats.processing > 0 && (
-        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-          <div className="flex items-center">
-            <span className="mr-1">🔒</span>
-            <span>
-              Notes marked as "processing" are currently locked to prevent 
-              concurrent processing. They will complete automatically or timeout after 15 minutes.
-            </span>
-          </div>
+        <div className="mt-4">
+          <Reasoning isStreaming={stats.processing > 0} defaultOpen={false}>
+            <ReasoningTrigger title="AI Processing Details" />
+            <ReasoningContent>
+              The AI is currently processing {stats.processing} note{stats.processing > 1 ? 's' : ''}:
+
+              **Processing Pipeline:**
+              1. **Audio Transcription** - Converting speech to text using OpenAI Whisper
+              2. **Content Analysis** - Extracting insights with GPT-4
+              3. **Knowledge Integration** - Building connections across your notes
+
+              **Processing Protection:**
+              Notes are locked during processing to prevent conflicts. Each note will complete automatically or timeout after 15 minutes.
+
+              **Current Status:** {stats.processing} file{stats.processing > 1 ? 's' : ''} in the AI pipeline
+            </ReasoningContent>
+          </Reasoning>
         </div>
       )}
     </div>

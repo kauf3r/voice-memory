@@ -119,7 +119,7 @@ export class PerformanceMetricsTracker {
     audioDuration?: number
     queueWaitTime?: number
   }): DetailedProcessingMetrics {
-    const process = {
+    const processMetrics = {
       user: process.cpuUsage(),
       memory: process.memoryUsage()
     }
@@ -134,8 +134,8 @@ export class PerformanceMetricsTracker {
       audioMimeType: additionalData?.audioMimeType,
       audioDuration: additionalData?.audioDuration,
       queueWaitTime: additionalData?.queueWaitTime,
-      memoryUsageStart: process.memory.heapUsed,
-      cpuTimeStart: process.user.user
+      memoryUsageStart: processMetrics.memory.heapUsed,
+      cpuTimeStart: processMetrics.user.user
     }
 
     this.metrics.set(noteId, metrics)
@@ -190,7 +190,7 @@ export class PerformanceMetricsTracker {
       return null
     }
 
-    const process = {
+    const processMetrics = {
       user: process.cpuUsage(),
       memory: process.memoryUsage()
     }
@@ -200,8 +200,8 @@ export class PerformanceMetricsTracker {
     metrics.totalTime = metrics.endTime - metrics.startTime
     metrics.processingStage = success ? 'completed' : 'failed'
     metrics.errorCategory = errorCategory
-    metrics.memoryUsageEnd = process.memory.heapUsed
-    metrics.cpuTimeEnd = process.user.user
+    metrics.memoryUsageEnd = processMetrics.memory.heapUsed
+    metrics.cpuTimeEnd = processMetrics.user.user
 
     // Add to historical data
     this.historicalMetrics.push({ ...metrics })

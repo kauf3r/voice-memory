@@ -3,6 +3,10 @@
 import { NoteAnalysis } from '@/lib/types'
 import { useState } from 'react'
 import MessageDrafter from './MessageDrafter'
+import { Response } from '@/components/ai-elements/response'
+import { InlineCitation, InlineCitationText, InlineCitationCard, InlineCitationCardTrigger, InlineCitationCardBody, InlineCitationSource } from '@/components/ai-elements/inline-citation'
+import { Task, TaskTrigger, TaskContent, TaskItem } from '@/components/ai-elements/task'
+import { Actions, Action } from '@/components/ai-elements/actions'
 
 interface AnalysisViewProps {
   analysis: NoteAnalysis
@@ -157,9 +161,9 @@ export default function AnalysisView({
             <p className="text-sm opacity-75">Emotional tone of the recording</p>
           </div>
         </div>
-        <p className="text-base">
+        <Response className="text-base">
           {analysis.sentiment?.explanation || 'No detailed sentiment analysis available.'}
-        </p>
+        </Response>
       </div>
     </div>
   )
@@ -296,7 +300,21 @@ export default function AnalysisView({
           <div className="space-y-2">
             {analysis.crossReferences.relatedNotes.map((note, index) => (
               <div key={index} className="bg-blue-50 rounded-lg p-3 border-l-4 border-blue-400">
-                <p className="text-blue-900">{note}</p>
+                <InlineCitation>
+                  <InlineCitationText className="text-blue-900">
+                    {note}
+                  </InlineCitationText>
+                  <InlineCitationCard>
+                    <InlineCitationCardTrigger sources={['voice-memory://related-note']} />
+                    <InlineCitationCardBody>
+                      <InlineCitationSource 
+                        title="Related Voice Note"
+                        description={`Connection identified by AI analysis: "${note.substring(0, 100)}${note.length > 100 ? '...' : ''}"`}
+                        url="voice-memory://cross-reference"
+                      />
+                    </InlineCitationCardBody>
+                  </InlineCitationCard>
+                </InlineCitation>
               </div>
             ))}
           </div>
@@ -309,7 +327,9 @@ export default function AnalysisView({
           <div className="space-y-2">
             {analysis.crossReferences.projectKnowledgeUpdates.map((update, index) => (
               <div key={index} className="bg-gray-50 rounded-lg p-3 border-l-4 border-gray-400">
-                <p className="text-gray-900">{update}</p>
+                <Response className="text-gray-900">
+                  {update}
+                </Response>
               </div>
             ))}
           </div>
