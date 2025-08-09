@@ -26,6 +26,7 @@ import { AnalysisProcessorService } from './AnalysisProcessorService'
 import { MetricsCollectorService } from './MetricsCollectorService'
 import { ErrorHandlerService } from './ErrorHandlerService'
 import { CircuitBreakerService } from './CircuitBreakerService'
+import { ProcessingQueueRecoveryService } from './ProcessingQueueRecoveryService'
 
 // Import utilities
 import { createDatabaseService } from '../database/queries'
@@ -45,6 +46,7 @@ export class ProcessingService implements ProcessingServiceInterface {
   private metricsCollector: MetricsCollectorService
   private errorHandler: ErrorHandlerService
   private circuitBreaker: CircuitBreakerService
+  private queueRecovery: ProcessingQueueRecoveryService
   private performanceTracker: PerformanceMetricsTracker
   private backgroundJobProcessor: BackgroundJobProcessor
 
@@ -69,6 +71,9 @@ export class ProcessingService implements ProcessingServiceInterface {
       // Create a pass-through circuit breaker for disabled mode
       this.circuitBreaker = new CircuitBreakerService({ failureThreshold: 999, timeoutMs: 0, resetTimeoutMs: 0 })
     }
+    
+    // Initialize queue recovery service
+    this.queueRecovery = new ProcessingQueueRecoveryService(this.client)
 
     // Initialize background job processor
     this.backgroundJobProcessor = new BackgroundJobProcessor(this)
@@ -756,6 +761,21 @@ export class ProcessingService implements ProcessingServiceInterface {
    */
   getSummaryMetrics(): any {
     return this.metricsCollector.getSummaryMetrics()
+  }
+
+  /**
+   * Recover failed processing jobs in the queue
+   */
+  async recoverProcessingQueue() {
+    console.log('🚑 Initiating processing queue recovery...')
+    return await this.queueRecovery.recoverProcessingQueue()
+  }
+
+  /**
+   * Get recovery statistics for monitoring
+   */
+  async getRecoveryStats() {
+    return await this.queueRecovery.getRecoveryStats()
   }
 
   /**

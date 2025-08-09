@@ -7,12 +7,18 @@ import { AudioProcessor, AudioProcessingResult, ProcessingContext } from './inte
 import { transcribeAudio } from '../openai'
 import { createServerFileFromBuffer, getFilePathFromUrl, getMimeTypeFromUrl } from '../storage'
 import { isVideoFile, processVideoFile } from '../video-processor'
+import { AudioFormatNormalizationService } from './AudioFormatNormalizationService'
+import { ContainerAnalysisService } from './ContainerAnalysisService'
 
 export class AudioProcessorService implements AudioProcessor {
   private client: SupabaseClient
+  private formatNormalizer: AudioFormatNormalizationService
+  private containerAnalyzer: ContainerAnalysisService
 
   constructor(client: SupabaseClient) {
     this.client = client
+    this.formatNormalizer = new AudioFormatNormalizationService()
+    this.containerAnalyzer = new ContainerAnalysisService()
   }
 
   async processAudio(audioData: Buffer, mimeType: string, noteId: string): Promise<AudioProcessingResult> {
@@ -43,7 +49,59 @@ export class AudioProcessorService implements AudioProcessor {
       let audioBuffer = audioData
       let finalMimeType = mimeType
       
-      // Check if this is a video file that requires special processing
+      // Step 1: Detailed container analysis
+      console.log(`🔍 Performing detailed container analysis...`)
+      const containerInfo = await this.containerAnalyzer.analyzeContainer(
+        audioBuffer,
+        mimeType,
+        `${noteId}.${extension}`
+      )
+      
+      console.log(`📊 Container Analysis Results:`)
+      console.log(`   Format: ${containerInfo.format}`)
+      console.log(`   Compatibility Score: ${containerInfo.compatibilityScore}/100`)
+      console.log(`   Is Compatible: ${containerInfo.isCompatible}`)
+      
+      if (containerInfo.brand) {
+        console.log(`   Brand: ${containerInfo.brand}`)
+      }
+      
+      if (containerInfo.warnings.length > 0) {
+        console.log(`   ⚠️ Warnings:`)
+        containerInfo.warnings.forEach(warning => console.log(`      • ${warning}`))
+      }
+      
+      if (containerInfo.recommendations.length > 0) {
+        console.log(`   💡 Recommendations:`)
+        containerInfo.recommendations.forEach(rec => console.log(`      • ${rec}`))
+      }
+
+      // Step 2: Normalize audio format for maximum Whisper compatibility
+      console.log(`🔄 Normalizing audio format...`)
+      const normalizationResult = await this.formatNormalizer.normalizeFormat(
+        audioBuffer, 
+        mimeType, 
+        `${noteId}.${extension}`
+      )
+      
+      if (normalizationResult.success) {
+        audioBuffer = normalizationResult.buffer
+        finalMimeType = normalizationResult.mimeType
+        
+        if (normalizationResult.warnings.length > 0) {
+          console.log(`⚠️ Format normalization warnings:`)
+          normalizationResult.warnings.forEach(warning => console.log(`   • ${warning}`))
+        }
+        
+        if (normalizationResult.originalFormat !== normalizationResult.normalizedFormat) {
+          console.log(`✅ Format normalized: ${normalizationResult.originalFormat} → ${normalizationResult.normalizedFormat}`)
+        }
+      } else {
+        console.warn(`❌ Format normalization failed: ${normalizationResult.error}`)
+        console.warn(`   Proceeding with original format - transcription may fail`)
+      }
+      
+      // Step 3: Check if this is a video file that requires special processing
       if (isVideoFile(mimeType, `${noteId}.${extension}`)) {
         console.log(`Video file detected for note ${noteId}`)
         
@@ -82,9 +140,37 @@ export class AudioProcessorService implements AudioProcessor {
           errorMessage: transcriptionError?.message
         })
         
-        // Specific error for M4A files
+        // Enhanced error for M4A/MP4 files with specific guidance
         if (extension === 'm4a' || finalMimeType.includes('mp4')) {
-          throw new Error(`M4A/MP4 transcription failed: ${transcriptionError?.message}. This may be due to container format compatibility issues.`)
+          const errorDetails = [
+            `M4A/MP4 transcription failed: ${transcriptionError?.message}`,
+            `Original format: ${mimeType}`,
+            `Final format: ${finalMimeType}`,
+            `File size: ${audioBuffer.length} bytes`,
+          ]
+          
+          // Add container analysis results
+          if (containerInfo) {
+            errorDetails.push(`Container compatibility score: ${containerInfo.compatibilityScore}/100`)
+            if (containerInfo.brand) {
+              errorDetails.push(`MP4 brand: ${containerInfo.brand}`)
+            }
+            if (containerInfo.recommendations.length > 0) {
+              errorDetails.push(`Recommendations: ${containerInfo.recommendations.join(', ')}`)
+            }
+          }
+          
+          // Add format analysis if normalization was attempted
+          if (normalizationResult) {
+            errorDetails.push(`Format normalization: ${normalizationResult.success ? 'succeeded' : 'failed'}`)
+            if (normalizationResult.error) {
+              errorDetails.push(`Normalization error: ${normalizationResult.error}`)
+            }
+          }
+          
+          errorDetails.push('Consider using WAV, MP3, or OGG format for better compatibility')
+          
+          throw new Error(errorDetails.join('. '))
         }
         
         throw new Error(`Transcription failed: ${transcriptionError?.message}`)

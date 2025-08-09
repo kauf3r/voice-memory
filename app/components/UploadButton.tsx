@@ -378,34 +378,4 @@ export default function UploadButton({
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 Drag and drop or click to browse
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Supports MP3, WAV, M4A, AAC, OGG (max 25MB each)
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div className="mt-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <Response className="text-red-700">
-              **Upload Error**
-              
-              {error}
-              
-              *Try uploading again or check your file format and size.*
-            </Response>
-            <button
-              onClick={() => setError(null)}
-              className="mt-3 text-sm text-red-600 hover:text-red-700 underline"
-            >
-              Dismiss and try again
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+         
