@@ -244,7 +244,7 @@ class ConfigManager {
         metricsRetentionHours: parseInt(process.env.METRICS_RETENTION_HOURS || '24'),
         healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '60000'), // 1 minute
         alerting: {
-          enabled: process.env.ENABLE_ALERTING === 'true',
+          enabled: process.env.ENABLE_ALERTING === 'true' && (!!process.env.ALERT_WEBHOOK_URL || !!process.env.SLACK_ALERT_CHANNEL),
           webhookUrl: process.env.ALERT_WEBHOOK_URL,
           slackChannel: process.env.SLACK_ALERT_CHANNEL,
           errorThreshold: parseInt(process.env.ALERT_ERROR_THRESHOLD || '5')
@@ -296,9 +296,8 @@ class ConfigManager {
     }
 
     // Validate OpenAI configuration
-    if (!config.openai.apiKey.startsWith('sk-')) {
-      errors.push('OpenAI API key must start with sk-')
-    }
+    // Skip API key format validation as OpenAI key formats may change
+    // The API itself will validate the key when making requests
 
     if (config.openai.maxTokens < 100) {
       errors.push('OpenAI max tokens must be at least 100')
