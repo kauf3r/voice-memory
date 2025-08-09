@@ -34,8 +34,6 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     },
     // Logger for debugging WebSocket issues
     logger: process.env.NODE_ENV === 'development' ? console.log : undefined,
-    // Transport options for WebSocket
-    transport: 'websocket',
     // Additional params for debugging
     params: {
       apikey: supabaseAnonKey || '',
