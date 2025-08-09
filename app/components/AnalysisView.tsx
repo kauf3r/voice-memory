@@ -198,15 +198,30 @@ export default function AnalysisView({
     <div className="space-y-6">
       {analysis.tasks?.myTasks && analysis.tasks.myTasks.length > 0 && (
         <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">My Tasks</h3>
-          <div className="space-y-2">
-            {analysis.tasks.myTasks.map((task, index) => (
-              <div key={index} className="flex items-start gap-3 bg-blue-50 rounded-lg p-3">
-                <div className="w-5 h-5 rounded border-2 border-blue-300 mt-0.5 flex-shrink-0" />
-                <span className="text-blue-900">{task}</span>
-              </div>
-            ))}
-          </div>
+          <Task defaultOpen={true}>
+            <TaskTrigger title={`My Tasks (${analysis.tasks.myTasks.length})`} />
+            <TaskContent>
+              {analysis.tasks.myTasks.map((task, index) => (
+                <div key={index} className="flex items-start justify-between gap-3 bg-blue-50 rounded-lg p-3">
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="w-5 h-5 rounded border-2 border-blue-300 mt-0.5 flex-shrink-0" />
+                    <TaskItem className="text-blue-900 flex-1">{task}</TaskItem>
+                  </div>
+                  <Actions>
+                    <Action tooltip="Mark as complete">
+                      ✓
+                    </Action>
+                    <Action tooltip="Pin task">
+                      📌
+                    </Action>
+                    <Action tooltip="Set reminder">
+                      ⏰
+                    </Action>
+                  </Actions>
+                </div>
+              ))}
+            </TaskContent>
+          </Task>
         </div>
       )}
 

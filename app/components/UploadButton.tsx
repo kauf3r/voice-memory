@@ -6,6 +6,8 @@ import { uploadAudioFile } from '@/lib/storage'
 import { supabase } from '@/lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
 import ErrorMessage from './ErrorMessage'
+import { Loader } from '@/components/ai-elements/loader'
+import { Response } from '@/components/ai-elements/response'
 
 interface UploadButtonProps {
   onUploadComplete?: () => void
@@ -329,19 +331,25 @@ export default function UploadButton({
       >
         {isUploading ? (
           <div className="space-y-4">
-            <LoadingSpinner size="lg" />
+            <div className="flex items-center justify-center">
+              <Loader size={32} className="mr-3" />
+            </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">Uploading...</p>
+              <Response className="text-sm font-medium text-gray-900 text-center">
+                **Uploading Your Voice Note**
+                
+                Preparing your audio file for AI analysis...
+              </Response>
               {hasActiveUploads && (
-                <div className="mt-2">
+                <div className="mt-4">
                   <div className="bg-gray-200 rounded-full h-2 w-full max-w-xs mx-auto">
                     <div
                       className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                       style={{ width: `${averageProgress}%` }}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {Math.round(averageProgress)}% complete
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    {Math.round(averageProgress)}% complete • Upload will complete shortly
                   </p>
                 </div>
               )}
@@ -381,10 +389,21 @@ export default function UploadButton({
 
       {error && (
         <div className="mt-4">
-          <ErrorMessage
-            message={error}
-            onRetry={() => setError(null)}
-          />
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <Response className="text-red-700">
+              **Upload Error**
+              
+              {error}
+              
+              *Try uploading again or check your file format and size.*
+            </Response>
+            <button
+              onClick={() => setError(null)}
+              className="mt-3 text-sm text-red-600 hover:text-red-700 underline"
+            >
+              Dismiss and try again
+            </button>
+          </div>
         </div>
       )}
     </div>
