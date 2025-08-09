@@ -6,6 +6,9 @@
   "functions": {
     "app/api/process/**/*.ts": {
       "maxDuration": 300
+    },
+    "app/api/upload/route.ts": {
+      "maxDuration": 60
     }
   },
   "regions": ["iad1"],
@@ -21,7 +24,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://voice-memory-tau.vercel.app"
+          "value": "*"
         },
         {
           "key": "Access-Control-Allow-Methods",

@@ -137,7 +137,7 @@ export default function UploadButton({
     }
   }, [user, validateFile, onUploadStart, onUploadComplete])
   
-  const uploadFileDirectly = useCallback(async (file: File, accessToken: string, fileId: string) => {
+  const uploadFileDirectly = useCallback(async (file: File, accessToken: string, fileId: string, retryCount = 0) => {
     const formData = new FormData()
     formData.append('file', file)
     
@@ -194,14 +194,38 @@ export default function UploadButton({
         }
       })
       
-      xhr.addEventListener('error', () => {
+      xhr.addEventListener('error', async () => {
         cleanup()
-        reject(new Error('Network error during upload'))
+        // Retry on network errors up to 3 times
+        if (retryCount < 3) {
+          console.log(`Network error, retrying upload (attempt ${retryCount + 2}/4)...`)
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // Exponential backoff
+          try {
+            const result = await uploadFileDirectly(file, accessToken, fileId, retryCount + 1)
+            resolve(result)
+          } catch (retryError) {
+            reject(retryError)
+          }
+        } else {
+          reject(new Error('Network error during upload (after 3 retries)'))
+        }
       })
       
-      xhr.addEventListener('timeout', () => {
+      xhr.addEventListener('timeout', async () => {
         cleanup()
-        reject(new Error('Upload timed out. Please try again.'))
+        // Retry on timeout up to 2 times with longer timeout
+        if (retryCount < 2) {
+          console.log(`Upload timeout, retrying with longer timeout (attempt ${retryCount + 2}/3)...`)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          try {
+            const result = await uploadFileDirectly(file, accessToken, fileId, retryCount + 1)
+            resolve(result)
+          } catch (retryError) {
+            reject(retryError)
+          }
+        } else {
+          reject(new Error('Upload timed out after multiple attempts. The file may be too large or your connection may be slow.'))
+        }
       })
       
       xhr.addEventListener('abort', () => {
@@ -209,7 +233,7 @@ export default function UploadButton({
         reject(new Error('Upload was cancelled'))
       })
       
-      xhr.timeout = 60000 // 60 second timeout for direct uploads
+      xhr.timeout = retryCount > 0 ? 180000 : 120000 // Longer timeout for retries
       xhr.open('POST', '/api/upload')
       xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
       xhr.send(formData)
