@@ -8,12 +8,23 @@ let openai: OpenAI | null = null
 
 function getOpenAIClient(): OpenAI {
   if (!openai) {
+    console.log('🔑 Initializing OpenAI client...')
+    
     if (!process.env.OPENAI_API_KEY) {
+      console.error('❌ OPENAI_API_KEY environment variable is not set')
+      console.log('🔍 Available environment variables:', {
+        NODE_ENV: process.env.NODE_ENV || 'undefined',
+        VERCEL_ENV: process.env.VERCEL_ENV || 'undefined',
+        hasOpenAIKey: !!process.env.OPENAI_API_KEY
+      })
       throw new Error('OPENAI_API_KEY environment variable is not set')
     }
+    
+    console.log('✅ OPENAI_API_KEY found, creating client')
     openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     })
+    console.log('✅ OpenAI client initialized successfully')
   }
   return openai
 }

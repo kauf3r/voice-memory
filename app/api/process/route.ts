@@ -70,6 +70,20 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
   }
 
       // External service errors (OpenAI, etc.) - check before rate limits
+    if (lowerMessage.includes('openai_api_key') || lowerMessage.includes('openai_api_key environment variable')) {
+      return {
+        type: ErrorTypeEnum.OPENAI_ERROR,
+        statusCode: 500,
+        response: {
+          error: 'Configuration error',
+          type: ErrorTypeEnum.OPENAI_ERROR,
+          details: 'The OpenAI API key is not configured. Please contact support.',
+          code: 'MISSING_API_KEY',
+          timestamp: new Date().toISOString()
+        }
+      }
+    }
+
     if (lowerMessage.includes('openai') || lowerMessage.includes('api key') || 
         lowerMessage.includes('invalid file') || lowerMessage.includes('file too large') ||
         lowerMessage.includes('transcription failed') || lowerMessage.includes('analysis failed')) {
@@ -150,6 +164,21 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
     }
   }
 
+  // Environment validation errors
+  if (lowerMessage.includes('environment validation failed') || lowerMessage.includes('environment variable')) {
+    return {
+      type: ErrorTypeEnum.INTERNAL,
+      statusCode: 500,
+      response: {
+        error: 'Configuration error',
+        type: ErrorTypeEnum.INTERNAL,
+        details: 'Server configuration is incomplete. Please contact support.',
+        code: 'CONFIG_ERROR',
+        timestamp: new Date().toISOString()
+      }
+    }
+  }
+
   // Validation errors
   if (lowerMessage.includes('validation') || lowerMessage.includes('invalid') || 
       lowerMessage.includes('required') || lowerMessage.includes('missing')) {
@@ -195,7 +224,16 @@ function createErrorResponse(error: unknown, additionalData?: Partial<ErrorRespo
     headers['Retry-After'] = '60'
   }
 
-  console.error(`[${type}] Processing error:`, error)
+  // Enhanced error logging with full context
+  console.error(`[${type}] Processing API Error:`, {
+    type,
+    statusCode,
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    timestamp: new Date().toISOString(),
+    response,
+    additionalData
+  })
   
   return NextResponse.json(response, { 
     status: statusCode,
@@ -204,22 +242,36 @@ function createErrorResponse(error: unknown, additionalData?: Partial<ErrorRespo
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+  console.log('🚀 Processing API called:', {
+    timestamp: new Date().toISOString(),
+    userAgent: request.headers.get('user-agent'),
+    host: request.headers.get('host')
+  })
+  
   try {
+    console.log('🔧 Creating Supabase client...')
     const supabase = createServerClient()
     
     // Try to get user from Authorization header first
+    console.log('🔑 Authenticating user...')
     let user = null
     let authError = null
     
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+    console.log('📋 Auth header status:', authHeader ? 'PRESENT' : 'MISSING')
+    
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '')
+      console.log('🎫 Using Bearer token authentication')
       const { data, error } = await supabase.auth.getUser(token)
       
       if (error) {
+        console.error('❌ Bearer token authentication failed:', error)
         authError = error
       } else {
         user = data?.user
+        console.log('✅ Bearer token authentication successful:', { userId: user?.id })
         // Set the session for this request
         await supabase.auth.setSession({
           access_token: token,
@@ -230,9 +282,16 @@ export async function POST(request: NextRequest) {
     
     // If no auth header or it failed, try to get from cookies
     if (!user) {
+      console.log('🍪 Trying cookie authentication...')
       const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
       user = cookieUser
       authError = error
+      
+      if (user) {
+        console.log('✅ Cookie authentication successful:', { userId: user.id })
+      } else {
+        console.error('❌ Cookie authentication failed:', error)
+      }
     }
     
     // Check for service key authentication (for admin operations)
@@ -244,10 +303,13 @@ export async function POST(request: NextRequest) {
       return createErrorResponse(new Error('Unauthorized'))
     }
 
+    console.log('📥 Parsing request body...')
     const body = await request.json()
     const { noteId, forceReprocess = false } = body
+    console.log('📋 Request parameters:', { noteId, forceReprocess })
 
     if (!noteId) {
+      console.error('❌ Missing noteId in request')
       return createErrorResponse(new Error('noteId is required'))
     }
 
@@ -298,9 +360,12 @@ export async function POST(request: NextRequest) {
 
     // Delegate processing to the service
     const userId = user?.id || note.user_id // Use note's user_id if service auth
+    console.log('⚙️ Calling processingService.processNote...', { noteId, userId, forceReprocess })
     const result = await processingService.processNote(noteId, userId, forceReprocess)
+    console.log('📊 Processing result:', { success: result.success, error: result.error, warning: result.warning })
 
     if (!result.success) {
+      console.error('❌ Processing failed:', result.error)
       return createErrorResponse(new Error(result.error || 'Processing failed'))
     }
 
@@ -326,6 +391,13 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
+    const processingTime = Date.now() - startTime
+    console.error('💥 API PROCESSING ERROR:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      processingTime: `${processingTime}ms`,
+      timestamp: new Date().toISOString()
+    })
     return createErrorResponse(error)
   }
 }
