@@ -82,8 +82,53 @@ export class ProcessingService implements ProcessingServiceInterface {
     console.log(`📊 Configuration: timeout=${this.config.timeoutMinutes}m, attempts=${this.config.maxAttempts}, batch=${this.config.batchSize}, circuitBreaker=${this.config.enableCircuitBreaker}`)
   }
 
+  private validateEnvironmentVariables(): { valid: boolean; errors: string[] } {
+    const errors: string[] = []
+    
+    // Check required environment variables
+    if (!process.env.OPENAI_API_KEY) {
+      errors.push('OPENAI_API_KEY is required')
+    }
+    
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      errors.push('NEXT_PUBLIC_SUPABASE_URL is required')
+    }
+    
+    if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      errors.push('NEXT_PUBLIC_SUPABASE_ANON_KEY is required')
+    }
+    
+    if (!process.env.SUPABASE_SERVICE_KEY) {
+      errors.push('SUPABASE_SERVICE_KEY is required')
+    }
+    
+    // Log current environment variable status (without exposing values)
+    console.log('🔍 Environment variable status:', {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'SET' : 'MISSING',
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'MISSING',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'MISSING',
+      SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ? 'SET' : 'MISSING',
+      NODE_ENV: process.env.NODE_ENV || 'undefined'
+    })
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    }
+  }
+
   async processNote(noteId: string, userId?: string, forceReprocess: boolean = false): Promise<ProcessingResult> {
-    console.log(`🚀 Processing note ${noteId} (force: ${forceReprocess})`)
+    const startTime = Date.now()
+    console.log(`🚀 Processing note ${noteId} (force: ${forceReprocess}, userId: ${userId})`)
+    
+    // Validate environment variables first
+    console.log('📋 Validating environment variables...')
+    const envValidation = this.validateEnvironmentVariables()
+    if (!envValidation.valid) {
+      console.error('❌ Environment validation failed:', envValidation.errors)
+      throw new Error(`Environment validation failed: ${envValidation.errors.join(', ')}`)
+    }
+    console.log('✅ Environment variables validated')
     
     // Initialize processing context
     const metrics = this.metricsCollector.recordProcessingStart(noteId)
@@ -106,20 +151,30 @@ export class ProcessingService implements ProcessingServiceInterface {
       }
 
       // Step 1: Acquire processing lock
+      console.log('🔒 Step 1: Acquiring processing lock...')
       if (!forceReprocess) {
         const lockAcquired = await this.lockManager.acquireLock(noteId, this.config.timeoutMinutes)
         
         if (!lockAcquired) {
+          console.log('❌ Failed to acquire processing lock')
           // Check if already processed or currently processing
           const dbService = createDatabaseService(this.client)
           const noteResult = await dbService.getNoteById(noteId, userId)
           
           if (!noteResult.success || !noteResult.data) {
+            console.error('❌ Note not found during lock check')
             throw new Error('Note not found')
           }
           
           const note = noteResult.data
+          console.log('📝 Note status during lock check:', {
+            processed_at: note.processed_at,
+            processing_started_at: note.processing_started_at,
+            processing_attempts: note.processing_attempts
+          })
+          
           if (note.processed_at) {
+            console.log('✅ Note already processed, returning cached result')
             return {
               success: true,
               warning: 'Note already processed',
@@ -127,32 +182,47 @@ export class ProcessingService implements ProcessingServiceInterface {
               analysis: note.analysis
             }
           } else if (note.processing_started_at) {
+            console.log('⏳ Note is currently being processed by another instance')
             return {
               success: false,
               error: 'Note is currently being processed by another instance'
             }
           } else {
+            console.log('❌ Unable to acquire processing lock - unknown state')
             return {
               success: false,
               error: 'Unable to acquire processing lock'
             }
           }
         }
+        console.log('✅ Processing lock acquired')
+      } else {
+        console.log('⚡ Forcing reprocess, skipping lock check')
       }
 
       // Step 2: Get note data and create job
+      console.log('📋 Step 2: Getting note data...')
       const dbService = createDatabaseService(this.client)
       const noteResult = await dbService.getNoteById(noteId, userId)
       
       if (!noteResult.success || !noteResult.data) {
+        console.error('❌ Failed to get note data:', noteResult.error)
         await this.lockManager.releaseLockWithError(noteId, 'Note not found')
         throw new Error('Note not found')
       }
       
       const note = noteResult.data
+      console.log('📝 Note data retrieved:', {
+        id: note.id,
+        user_id: note.user_id,
+        audio_url: note.audio_url ? 'SET' : 'MISSING',
+        processed_at: note.processed_at,
+        processing_attempts: note.processing_attempts
+      })
       
       // Check if already processed (double-check)
       if (note.processed_at && !forceReprocess) {
+        console.log('✅ Note already processed (double-check), releasing lock')
         await this.lockManager.releaseLock(noteId)
         return {
           success: true,
@@ -163,6 +233,7 @@ export class ProcessingService implements ProcessingServiceInterface {
       }
 
       // Create processing job
+      console.log('🏗️ Creating processing job...')
       const job: ProcessingJob = {
         queue_id: note.id,
         note_id: note.id,
@@ -175,8 +246,10 @@ export class ProcessingService implements ProcessingServiceInterface {
       
       context.job = job
       context.userId = note.user_id
+      console.log('✅ Processing job created')
 
       // Step 3: Process the job
+      console.log('⚙️ Step 3: Processing the job...')
       const result = await this.processJobWithServices(context)
       
       // Step 4: Record completion metrics
@@ -188,7 +261,17 @@ export class ProcessingService implements ProcessingServiceInterface {
       return result
 
     } catch (error) {
+      const processingTime = Date.now() - startTime
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      console.error('💥 PROCESSING ERROR:', {
+        noteId,
+        userId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        processingTime: `${processingTime}ms`,
+        timestamp: new Date().toISOString()
+      })
       
       // Classify and log error
       this.errorHandler.logError(context, error)
