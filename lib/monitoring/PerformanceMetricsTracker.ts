@@ -669,9 +669,4 @@ export class PerformanceMetricsTracker {
     
     const removedCount = initialCount - this.historicalMetrics.length
     if (removedCount > 0) {
-      console.log(`🗑️ Cleared ${removedCount} old performance metrics (older than ${retentionHours}h)`)
-    }
-    
-    return removedCount
-  }
-}
+      console.log(`🗑️ Cleared ${removedCount} old performance metrics (older than ${retentionHours}h)`
