@@ -165,4 +165,21 @@ export function ProcessingStatus({ userId, onRefresh }: ProcessingStatusProps) {
           <Reasoning isStreaming={stats.processing > 0} defaultOpen={false}>
             <ReasoningTrigger title="AI Processing Details" />
             <ReasoningContent>
-              The 
+              The AI is currently processing {stats.processing} note{stats.processing > 1 ? 's' : ''}:
+
+              **Processing Pipeline:**
+              1. **Audio Transcription** - Converting speech to text using OpenAI Whisper
+              2. **Content Analysis** - Extracting insights with GPT-4
+              3. **Knowledge Integration** - Building connections across your notes
+
+              **Processing Protection:**
+              Notes are locked during processing to prevent conflicts. Each note will complete automatically or timeout after 15 minutes.
+
+              **Current Status:** {stats.processing} file{stats.processing > 1 ? 's' : ''} in the AI pipeline
+            </ReasoningContent>
+          </Reasoning>
+        </div>
+      )}
+    </div>
+  )
+}
