@@ -10,7 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   })
 }
 
-// Create a client with enhanced session persistence and timeout handling
+// Create a client with enhanced session persistence and WebSocket optimization
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   auth: {
     // Use default localStorage storage
@@ -20,12 +20,46 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     persistSession: true,
     autoRefreshToken: true,
     // Add timeout for auth operations
-    debug: true // Always debug to see what's happening
+    debug: process.env.NODE_ENV === 'development' // Only debug in development
+  },
+  realtime: {
+    // WebSocket configuration for better reliability
+    timeout: 30000, // 30 second timeout
+    heartbeatIntervalMs: 30000, // Send heartbeat every 30 seconds
+    reconnectAfterMs: (tries: number) => {
+      // Exponential backoff with jitter: 1s, 2s, 4s, 8s, max 30s
+      const baseDelay = Math.min(1000 * Math.pow(2, tries), 30000)
+      const jitter = baseDelay * 0.1 * Math.random() // Add up to 10% jitter
+      return Math.floor(baseDelay + jitter)
+    },
+    // Logger for debugging WebSocket issues
+    logger: process.env.NODE_ENV === 'development' ? console.log : undefined,
+    // Transport options for WebSocket
+    transport: 'websocket',
+    // Additional params for debugging
+    params: {
+      apikey: supabaseAnonKey || '',
+      log_level: process.env.NODE_ENV === 'development' ? 'info' : 'error'
+    }
   },
   global: {
     headers: {
-      'x-client-info': 'voice-memory-nextjs'
+      'x-client-info': 'voice-memory-nextjs',
+      'x-client-version': '1.0.0'
     }
+  },
+  // Connection pooling and reuse
+  db: {
+    schema: 'public',
+  },
+  // Add fetch configuration for better error handling
+  fetch: (url: RequestInfo | URL, init?: RequestInit) => {
+    const customInit = {
+      ...init,
+      // Set reasonable timeouts for HTTP requests
+      signal: init?.signal || AbortSignal.timeout(30000), // 30s timeout
+    }
+    return fetch(url, customInit)
   }
 })
 

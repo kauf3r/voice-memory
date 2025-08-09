@@ -54,9 +54,15 @@ export function useRealtimeSubscription({
       onToast: showToast
     }
 
-    // Create and start realtime manager
+    // Create and start realtime manager with enhanced configuration
     const realtimeManager = new RealtimeManager(
-      { userId: user.id },
+      { 
+        userId: user.id,
+        maxReconnectAttempts: 5,
+        baseRetryDelay: 1000,
+        circuitBreakerThreshold: 3,
+        healthCheckInterval: 30000 // 30 seconds
+      },
       callbacks
     )
 
@@ -78,8 +84,19 @@ export function useRealtimeSubscription({
     refreshPinnedTasks
   ])
 
+  // Expose useful methods and state
   return {
-    // Could expose methods here if needed for manual control
-    isActive: !!realtimeManagerRef.current
+    isActive: !!realtimeManagerRef.current,
+    getConnectionMetrics: () => realtimeManagerRef.current?.getConnectionMetrics(),
+    switchToPollingFallback: () => realtimeManagerRef.current?.switchToPollingFallback(),
+    switchToRealtimeMode: () => realtimeManagerRef.current?.switchToRealtimeMode(),
+    // Method to force retry connection
+    retryConnection: () => {
+      const manager = realtimeManagerRef.current
+      if (manager) {
+        manager.stop()
+        setTimeout(() => manager.start(), 1000) // Restart after 1 second
+      }
+    }
   }
 }
