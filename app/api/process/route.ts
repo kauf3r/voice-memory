@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase-server'
 import { processingService } from '@/lib/processing/ProcessingService'
 import { quotaManager } from '@/lib/quota-manager'
 import type { ErrorResponse, ErrorType, UsageInfo, RateLimitInfo } from '@/lib/types/api'
+import { retryOpenAIOperation, retryQueue, circuitBreaker } from '@/lib/utils/retry'
 
 // Error categorization and mapping
 enum ErrorTypeEnum {
@@ -70,6 +71,7 @@ function categorizeError(error: unknown): { type: ErrorType; statusCode: number;
   }
 
       // External service errors (OpenAI, etc.) - check before rate limits
+      // Retry logic is now handled by the retry utility with circuit breaker
     if (lowerMessage.includes('openai_api_key') || lowerMessage.includes('openai_api_key environment variable')) {
       return {
         type: ErrorTypeEnum.OPENAI_ERROR,
@@ -358,14 +360,75 @@ export async function POST(request: NextRequest) {
       await quotaManager.recordProcessingAttempt(user.id)
     }
 
-    // Delegate processing to the service
+    // Delegate processing to the service with retry logic for transient errors
     const userId = user?.id || note.user_id // Use note's user_id if service auth
-    console.log('⚙️ Calling processingService.processNote...', { noteId, userId, forceReprocess })
-    const result = await processingService.processNote(noteId, userId, forceReprocess)
-    console.log('📊 Processing result:', { success: result.success, error: result.error, warning: result.warning })
+    console.log('⚙️ Calling processingService.processNote with retry logic...', { noteId, userId, forceReprocess })
+    
+    // Check circuit breaker before processing
+    if (circuitBreaker.isOpen(`processing_${userId}`)) {
+      console.error('🔌 Circuit breaker open for user:', userId)
+      
+      // Queue for later retry if circuit is open
+      retryQueue.enqueue(
+        `process_${noteId}`,
+        () => processingService.processNote(noteId, userId, forceReprocess),
+        {
+          maxAttempts: 3,
+          baseDelayMs: 5000,
+          retryableErrors: ['openai', 'rate_limit', 'timeout', 'network']
+        }
+      )
+      
+      return NextResponse.json({
+        error: 'Service temporarily unavailable due to high error rate',
+        type: ErrorTypeEnum.RATE_LIMIT,
+        details: 'Your request has been queued and will be processed automatically when the service recovers.',
+        code: 'CIRCUIT_BREAKER_OPEN',
+        timestamp: new Date().toISOString()
+      }, { status: 503 })
+    }
+    
+    // Wrap processing with retry logic
+    const retryResult = await retryOpenAIOperation(
+      () => processingService.processNote(noteId, userId, forceReprocess),
+      'processNote'
+    )
+    
+    if (!retryResult.success) {
+      console.error('❌ Processing failed after retries:', retryResult.error)
+      console.log(`📊 Total attempts: ${retryResult.attempts}, Total delay: ${retryResult.totalDelayMs}ms`)
+      
+      // Record circuit breaker failure
+      circuitBreaker.recordFailure(`processing_${userId}`)
+      
+      // Queue for background retry if it's a transient error
+      const errorMessage = retryResult.error?.message || ''
+      if (errorMessage.includes('rate_limit') || errorMessage.includes('timeout')) {
+        const queued = retryQueue.enqueue(
+          `process_${noteId}`,
+          () => processingService.processNote(noteId, userId, forceReprocess)
+        )
+        
+        if (queued) {
+          console.log('📋 Request queued for background retry:', noteId)
+          return NextResponse.json({
+            error: 'Processing temporarily delayed',
+            type: ErrorTypeEnum.PROCESSING,
+            details: 'Your request is being processed in the background. Please check back in a few minutes.',
+            code: 'QUEUED_FOR_RETRY',
+            timestamp: new Date().toISOString()
+          }, { status: 202 })
+        }
+      }
+      
+      return createErrorResponse(retryResult.error || new Error('Processing failed'))
+    }
+    
+    const result = retryResult.data!
+    console.log('📊 Processing result:', { success: result.success, error: result.error, warning: result.warning, attempts: retryResult.attempts })
 
     if (!result.success) {
-      console.error('❌ Processing failed:', result.error)
+      console.error('❌ Processing returned failure:', result.error)
       return createErrorResponse(new Error(result.error || 'Processing failed'))
     }
 
