@@ -182,12 +182,23 @@ export class AudioFormatNormalizationService {
     const warnings: string[] = []
 
     try {
-      // For M4A/MP4 files, attempt conversion to WAV using browser APIs if available
+      // For M4A/MP4 files, try server-side FFmpeg conversion first
       if ((originalMimeType.includes('mp4') || originalMimeType.includes('m4a')) && 
-          targetMimeType === 'audio/wav' && 
-          typeof AudioContext !== 'undefined') {
+          targetMimeType === 'audio/wav') {
         
-        return await this.convertToWavUsingWebAudio(buffer, warnings)
+        // Try server-side FFmpeg conversion
+        if (typeof window === 'undefined') {
+          const ffmpegResult = await this.convertToWavUsingFFmpeg(buffer, warnings)
+          if (ffmpegResult.success) {
+            return ffmpegResult
+          }
+          warnings.push('FFmpeg conversion failed, trying Web Audio fallback')
+        }
+        
+        // Fallback to Web Audio API if in browser
+        if (typeof AudioContext !== 'undefined') {
+          return await this.convertToWavUsingWebAudio(buffer, warnings)
+        }
       }
 
       // For other formats, return original with warning
@@ -301,6 +312,76 @@ export class AudioFormatNormalizationService {
     }
     
     return buffer
+  }
+
+  /**
+   * Convert audio to WAV using FFmpeg (server-side only)
+   */
+  private async convertToWavUsingFFmpeg(
+    buffer: Buffer,
+    warnings: string[]
+  ): Promise<{ success: boolean; buffer: Buffer; mimeType: string; warnings: string[]; error?: string }> {
+    try {
+      // Only available on server-side
+      if (typeof window !== 'undefined') {
+        throw new Error('FFmpeg conversion only available on server-side')
+      }
+
+      const ffmpeg = require('fluent-ffmpeg')
+      const fs = require('fs')
+      const path = require('path')
+      const os = require('os')
+
+      // Create temporary files
+      const tempDir = os.tmpdir()
+      const inputFile = path.join(tempDir, `input_${Date.now()}.m4a`)
+      const outputFile = path.join(tempDir, `output_${Date.now()}.wav`)
+
+      // Write input buffer to temp file
+      fs.writeFileSync(inputFile, buffer)
+
+      // Convert using FFmpeg
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(inputFile)
+          .toFormat('wav')
+          .audioCodec('pcm_s16le') // 16-bit PCM
+          .audioChannels(1) // Mono for better Whisper compatibility
+          .audioFrequency(16000) // 16kHz sample rate (Whisper optimal)
+          .on('end', () => resolve())
+          .on('error', (error: Error) => reject(error))
+          .save(outputFile)
+      })
+
+      // Read converted file
+      const convertedBuffer = fs.readFileSync(outputFile)
+
+      // Cleanup temp files
+      try {
+        fs.unlinkSync(inputFile)
+        fs.unlinkSync(outputFile)
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup temp files:', cleanupError)
+      }
+
+      warnings.push('Successfully converted M4A to WAV using FFmpeg')
+      warnings.push('Optimized for Whisper: 16kHz mono PCM')
+
+      return {
+        success: true,
+        buffer: convertedBuffer,
+        mimeType: 'audio/wav',
+        warnings
+      }
+
+    } catch (error) {
+      return {
+        success: false,
+        buffer,
+        mimeType: 'application/octet-stream',
+        warnings,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
   }
 
   /**
