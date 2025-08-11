@@ -232,7 +232,7 @@ class ConfigManager {
         },
         cors: {
           enabled: process.env.ENABLE_CORS !== 'false',
-          origins: (process.env.CORS_ORIGINS || 'http://localhost:3000').split(','),
+          origins: this.getCorsOrigins(),
           credentials: process.env.CORS_CREDENTIALS !== 'false'
         }
       },
@@ -268,6 +268,32 @@ class ConfigManager {
       throw new Error(`Required environment variable ${key} is not set`)
     }
     return value
+  }
+
+  private getCorsOrigins(): string[] {
+    // If CORS_ORIGINS is explicitly set, use it
+    if (process.env.CORS_ORIGINS) {
+      return process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
+    }
+
+    // Environment-aware defaults
+    const environment = process.env.NODE_ENV || 'development'
+    
+    if (environment === 'production' || environment === 'staging') {
+      // In production, try to use Vercel URL or require explicit configuration
+      if (process.env.VERCEL_URL) {
+        return [`https://${process.env.VERCEL_URL}`]
+      }
+      
+      // If no Vercel URL and no explicit CORS_ORIGINS in production, return empty array
+      // This will cause validation to fail, which is what we want
+      console.warn('⚠️ No CORS origins configured for production environment')
+      console.warn('   Set CORS_ORIGINS environment variable with your production domains')
+      return []
+    }
+    
+    // Development default
+    return ['http://localhost:3000']
   }
 
   private validateConfiguration(config: AppConfig): void {
