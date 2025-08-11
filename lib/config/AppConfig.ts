@@ -332,6 +332,92 @@ class ConfigManager {
       }
     }
 
+    // Production environment validation
+    if (config.environment === 'production' || config.environment === 'staging') {
+      // Check for default or weak secrets
+      if (config.security.jwtSecret === 'your-secret-key' || 
+          config.security.jwtSecret.length < 32) {
+        errors.push('Production requires a strong JWT secret (minimum 32 characters)')
+      }
+
+      // Verify API keys are not using defaults or test values
+      if (!config.openai.apiKey || 
+          config.openai.apiKey.startsWith('sk-test') ||
+          config.openai.apiKey === 'your-api-key') {
+        errors.push('Production requires valid OpenAI API key')
+      }
+
+      // Validate Supabase configuration
+      if (!config.database.supabaseUrl.startsWith('https://')) {
+        errors.push('Production database URL must use HTTPS')
+      }
+
+      if (config.database.supabaseServiceKey === 'your-service-key' ||
+          config.database.supabaseServiceKey.length < 40) {
+        errors.push('Production requires valid Supabase service key')
+      }
+
+      // Validate CORS configuration
+      if (config.security.cors.enabled) {
+        const validOrigins = config.security.cors.origins.filter(origin => {
+          // Check for wildcards or localhost in production
+          if (origin === '*' || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            return false
+          }
+          // Ensure HTTPS for production origins
+          if (!origin.startsWith('https://') && !origin.startsWith('http://localhost')) {
+            return false
+          }
+          return true
+        })
+
+        if (validOrigins.length !== config.security.cors.origins.length) {
+          errors.push('Production CORS origins must use HTTPS and cannot use wildcards or localhost')
+        }
+      }
+
+      // Ensure rate limiting is enabled
+      if (!config.security.rateLimiting.enabled) {
+        errors.push('Rate limiting must be enabled in production')
+      }
+
+      if (config.security.rateLimiting.maxRequests > 1000) {
+        errors.push('Production rate limit seems too high (> 1000 requests per window)')
+      }
+
+      // Validate session security
+      if (config.security.sessionTimeout > 86400000 * 7) { // 7 days
+        errors.push('Production session timeout should not exceed 7 days')
+      }
+
+      // Check monitoring configuration
+      if (!config.monitoring.enableMetrics) {
+        console.warn('⚠️ Metrics collection is disabled in production')
+      }
+
+      if (!config.monitoring.enableLogging) {
+        console.warn('⚠️ Logging is disabled in production')
+      }
+
+      // Validate file upload limits
+      if (config.storage.maxFileSize > 104857600) { // 100MB
+        console.warn('⚠️ File size limit exceeds 100MB in production')
+      }
+
+      // Check for required production features
+      if (!config.processing.enableCircuitBreaker) {
+        console.warn('⚠️ Circuit breaker is disabled in production')
+      }
+
+      // Log production configuration summary for audit
+      console.log('🔒 Production security validation completed')
+      console.log(`  Environment: ${config.environment}`)
+      console.log(`  Rate limiting: ${config.security.rateLimiting.enabled ? 'Enabled' : 'Disabled'}`)
+      console.log(`  CORS origins: ${config.security.cors.origins.length} configured`)
+      console.log(`  Session timeout: ${config.security.sessionTimeout / 3600000} hours`)
+      console.log(`  Circuit breaker: ${config.processing.enableCircuitBreaker ? 'Enabled' : 'Disabled'}`)
+    }
+
     // Throw error if validation fails
     if (errors.length > 0) {
       throw new Error(`Configuration validation failed:\n${errors.join('\n')}`)
