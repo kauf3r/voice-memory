@@ -13,50 +13,63 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 
-// Create the Supabase client with optimized configuration
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce',
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
-    },
-  },
-  global: {
-    headers: {
-      'X-Client-Info': 'voice-memory-app',
-    },
-  },
-})
+// Singleton client instance
+let _supabaseClient: any = null
 
-// Enhanced error handling for development
-if (process.env.NODE_ENV === 'development') {
-  console.log('🔌 Supabase client initialized:', {
-    url: supabaseUrl.substring(0, 30) + '...',
-    hasAnonKey: !!supabaseAnonKey,
-    version: '2.0.0'
+// Create the Supabase client with optimized configuration (singleton)
+function createSupabaseClient() {
+  if (_supabaseClient) return _supabaseClient
+  
+  _supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+      storageKey: 'voice-memory-auth-token', // Unique storage key
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'voice-memory-app',
+      },
+    },
   })
+
+  // Enhanced error handling for development
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔌 Supabase client initialized (singleton):', {
+      url: supabaseUrl.substring(0, 30) + '...',
+      hasAnonKey: !!supabaseAnonKey,
+      version: '2.1.0'
+    })
+  }
+
+  // Add connection monitoring (client-side only)
+  if (typeof window !== 'undefined') {
+    _supabaseClient.realtime.onOpen(() => {
+      console.log('🟢 Supabase realtime connected')
+    })
+
+    _supabaseClient.realtime.onClose(() => {
+      console.log('🔴 Supabase realtime disconnected')
+    })
+
+    _supabaseClient.realtime.onError((error) => {
+      console.error('❌ Supabase realtime error:', error)
+    })
+  }
+
+  return _supabaseClient
 }
 
-// Add connection monitoring (client-side only)
-if (typeof window !== 'undefined') {
-  supabase.realtime.onOpen(() => {
-    console.log('🟢 Supabase realtime connected')
-  })
-
-  supabase.realtime.onClose(() => {
-    console.log('🔴 Supabase realtime disconnected')
-  })
-
-  supabase.realtime.onError((error) => {
-    console.error('❌ Supabase realtime error:', error)
-  })
-}
+// Export singleton instance
+export const supabase = createSupabaseClient()
 
 // Helper function to manually process auth tokens from URL hash
 export const processUrlTokens = async () => {
