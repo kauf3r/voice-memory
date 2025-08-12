@@ -13,14 +13,17 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 
-// Singleton client instance
-let _supabaseClient: any = null
+// Global singleton to prevent multiple instances
+const GLOBAL_KEY = '__VOICE_MEMORY_SUPABASE_CLIENT__'
 
 // Create the Supabase client with optimized configuration (singleton)
 function createSupabaseClient() {
-  if (_supabaseClient) return _supabaseClient
+  // Check for existing global instance first
+  if (typeof window !== 'undefined' && (window as any)[GLOBAL_KEY]) {
+    return (window as any)[GLOBAL_KEY]
+  }
   
-  _supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -41,31 +44,43 @@ function createSupabaseClient() {
     },
   })
 
+  // Store globally in browser
+  if (typeof window !== 'undefined') {
+    (window as any)[GLOBAL_KEY] = client
+  }
+
   // Enhanced error handling for development
   if (process.env.NODE_ENV === 'development') {
-    console.log('🔌 Supabase client initialized (singleton):', {
-      url: supabaseUrl.substring(0, 30) + '...',
+    console.log('🔌 Supabase client initialized (global singleton):', {
+      url: supabaseUrl?.substring(0, 30) + '...',
       hasAnonKey: !!supabaseAnonKey,
-      version: '2.1.0'
+      version: '2.2.0'
     })
   }
 
-  // Add connection monitoring (client-side only)
-  if (typeof window !== 'undefined') {
-    _supabaseClient.realtime.onOpen(() => {
-      console.log('🟢 Supabase realtime connected')
-    })
+  // Add connection monitoring (client-side only, with safety checks)
+  if (typeof window !== 'undefined' && client.realtime) {
+    // Check if methods exist before calling them
+    if (typeof client.realtime.onOpen === 'function') {
+      client.realtime.onOpen(() => {
+        console.log('🟢 Supabase realtime connected')
+      })
+    }
 
-    _supabaseClient.realtime.onClose(() => {
-      console.log('🔴 Supabase realtime disconnected')
-    })
+    if (typeof client.realtime.onClose === 'function') {
+      client.realtime.onClose(() => {
+        console.log('🔴 Supabase realtime disconnected')
+      })
+    }
 
-    _supabaseClient.realtime.onError((error) => {
-      console.error('❌ Supabase realtime error:', error)
-    })
+    if (typeof client.realtime.onError === 'function') {
+      client.realtime.onError((error: any) => {
+        console.error('❌ Supabase realtime error:', error)
+      })
+    }
   }
 
-  return _supabaseClient
+  return client
 }
 
 // Export singleton instance
