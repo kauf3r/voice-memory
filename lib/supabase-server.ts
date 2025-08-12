@@ -16,10 +16,11 @@ export function createServerClient() {
   }
 
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_URL.trim(),
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.trim(),
     {
       auth: {
+        storageKey: 'voice-memory-server-auth-token', // Unique storage key for server
         storage: cookieStore ? {
           getItem: (key: string) => {
             try {
@@ -56,6 +57,15 @@ export function createServerClient() {
         detectSessionInUrl: true,
         flowType: 'implicit',
       },
+      realtime: {
+        // Disable realtime for server-side clients
+        params: {},
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'voice-memory-server',
+        },
+      },
     }
   )
 }
@@ -69,12 +79,22 @@ export function createServiceClient() {
   }
   
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceKey,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    serviceKey.trim(),
     {
       auth: {
+        storageKey: 'voice-memory-service-auth-token', // Unique storage key for service
         autoRefreshToken: false,
         persistSession: false,
+      },
+      realtime: {
+        // Disable realtime for service clients
+        params: {},
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'voice-memory-service',
+        },
       },
     }
   )
