@@ -1,0 +1,74 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from './AuthProvider'
+
+export default function AutoAuth() {
+  const { user } = useAuth()
+  const [attempting, setAttempting] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    // Don't show anything if we're in the auth callback process
+    if (typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
+      return
+    }
+
+    // Only attempt auto-auth if not already logged in and no existing session
+    if (!user && !attempting) {
+      // Check if there's already a session before attempting auto-auth
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) {
+          // No existing session, try auto-auth
+          attemptAutoAuth()
+        }
+      })
+    }
+  }, [user, attempting])
+
+  const attemptAutoAuth = async () => {
+    setAttempting(true)
+    setMessage('🔐 Checking authentication...')
+
+    try {
+      // Check if there's an existing session
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error) {
+        setMessage('Authentication needed. Please use the login form below.')
+        console.error('Auto-auth error:', error)
+      } else if (session?.user) {
+        setMessage('')
+        // The AuthProvider will handle the state update
+      } else {
+        setMessage('Please sign in to continue.')
+      }
+    } catch (error) {
+      setMessage('Please use the login form below.')
+      console.error('Auto-auth exception:', error)
+    } finally {
+      setAttempting(false)
+    }
+  }
+
+  // Don't render anything if user is already authenticated or no message
+  if (user || !message) return null
+
+  // Only show error messages, not informational ones
+  if (!message.includes('failed') && !message.includes('needed')) return null
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded p-3 text-sm">
+      <p className="text-red-800">{message}</p>
+      {message.includes('failed') && (
+        <button
+          onClick={() => window.location.href = '/test-auth'}
+          className="mt-2 bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700"
+        >
+          Manual Authentication
+        </button>
+      )}
+    </div>
+  )
+}
