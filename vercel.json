@@ -9,8 +9,7 @@
     },
     "app/api/upload/route.ts": {
       "maxDuration": 60,
-      "memory": 1024,
-      "maxRequestBodySize": "25mb"
+      "memory": 1024
     }
   },
   "regions": ["iad1"],
