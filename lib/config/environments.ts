@@ -18,7 +18,9 @@ export const developmentConfig: Partial<AppConfig> = {
       failureThreshold: 3, // Lower threshold for development
       timeoutMs: 120000, // 2 minutes
       resetTimeoutMs: 15000 // 15 seconds
-    }
+    },
+    enableBackgroundJobs: false,
+    backgroundJobs: { maxConcurrency: 1, processingInterval: 5000, retryDelay: 1000, maxRetries: 2, enableScheduledMaintenance: false }
   },
   monitoring: {
     enableMetrics: true,
@@ -59,7 +61,9 @@ export const stagingConfig: Partial<AppConfig> = {
       failureThreshold: 4,
       timeoutMs: 240000, // 4 minutes
       resetTimeoutMs: 20000 // 20 seconds
-    }
+    },
+    enableBackgroundJobs: false,
+    backgroundJobs: { maxConcurrency: 2, processingInterval: 5000, retryDelay: 1000, maxRetries: 3, enableScheduledMaintenance: false }
   },
   monitoring: {
     enableMetrics: true,
@@ -73,6 +77,7 @@ export const stagingConfig: Partial<AppConfig> = {
     }
   },
   security: {
+    jwtSecret: process.env.JWT_SECRET || 'staging-secret-key',
     sessionTimeout: 43200000, // 12 hours
     rateLimiting: {
       enabled: true,
@@ -99,7 +104,9 @@ export const productionConfig: Partial<AppConfig> = {
       failureThreshold: 5,
       timeoutMs: 300000, // 5 minutes
       resetTimeoutMs: 30000 // 30 seconds
-    }
+    },
+    enableBackgroundJobs: false,
+    backgroundJobs: { maxConcurrency: 3, processingInterval: 30000, retryDelay: 60000, maxRetries: 3, enableScheduledMaintenance: false }
   },
   monitoring: {
     enableMetrics: true,
@@ -113,6 +120,7 @@ export const productionConfig: Partial<AppConfig> = {
     }
   },
   security: {
+    jwtSecret: process.env.JWT_SECRET || '',
     sessionTimeout: 28800000, // 8 hours
     rateLimiting: {
       enabled: true,
@@ -147,7 +155,9 @@ export const testConfig: Partial<AppConfig> = {
       failureThreshold: 10,
       timeoutMs: 10000,
       resetTimeoutMs: 1000
-    }
+    },
+    enableBackgroundJobs: false,
+    backgroundJobs: { maxConcurrency: 1, processingInterval: 1000, retryDelay: 100, maxRetries: 1, enableScheduledMaintenance: false }
   },
   monitoring: {
     enableMetrics: false, // Disable metrics in tests
