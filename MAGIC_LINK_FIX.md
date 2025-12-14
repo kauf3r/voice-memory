@@ -1,15 +1,31 @@
 # Magic Link Authentication Fix
 
-## Current Status
-✅ Dev server running at http://localhost:3000
-✅ Debug tool available at http://localhost:3000/debug-magic-link
-✅ Missing dependency `isows` installed
-✅ Webpack configuration updated to handle Supabase realtime
+## Current Status (December 2025)
+✅ Fixed server/client session storage mismatch
+✅ Added middleware for session refresh
+✅ Both server and client now use cookie-based auth via `@supabase/ssr`
 
 ## The Problem
 When you click a magic link from your email, it redirects back to the login page instead of signing you in.
 
-**Root Cause:** The PKCE (Proof Key for Code Exchange) flow requires that you click the magic link **in the same browser** where you requested it. The code verifier is stored in localStorage when you request the link, and needs to be available when you click it.
+## Root Cause: Session Storage Mismatch (FIXED Dec 2025)
+
+**The issue was a mismatch between how server and client stored sessions:**
+- **Server** (`lib/supabase-server.ts`): Used `@supabase/ssr` with cookies
+- **Client** (`lib/supabase.ts`): Used `@supabase/supabase-js` with localStorage
+
+When the server exchanged the auth code and stored the session in cookies, the client looked in localStorage and found nothing.
+
+**Fix applied:**
+1. `lib/supabase.ts` - Changed to use `createBrowserClient()` from `@supabase/ssr`
+2. `middleware.ts` - Added to refresh session on each request
+
+---
+
+## Other Potential Issues
+
+### PKCE Same-Browser Requirement
+The PKCE (Proof Key for Code Exchange) flow requires that you click the magic link **in the same browser** where you requested it. The code verifier is stored in localStorage when you request the link, and needs to be available when you click it.
 
 **Common scenarios that cause this:**
 - Requesting magic link in Chrome, but clicking it opens in your default email client's browser

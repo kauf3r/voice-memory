@@ -40,39 +40,19 @@ interface FetchNotesOptions {
 }
 
 export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
+  const { limit = 20, search, includeErrorFields = true, enabled = true, errorStatus } = options
+
   const [notes, setNotes] = useState<Note[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const offsetRef = useRef(0)
-  const [errorFilter, setErrorFilter] = useState<boolean | null>(options.errorStatus || null)
+  const [errorFilter, setErrorFilter] = useState<boolean | null>(errorStatus ?? null)
 
-  const { limit = 20, search, includeErrorFields = true, enabled = true } = options
-  
-  // If disabled, return empty state
-  if (!enabled) {
-    return {
-      notes: [],
-      loading: false,
-      error: null,
-      totalCount: 0,
-      hasMore: false,
-      refresh: async () => {},
-      loadMore: async () => {},
-      retryNote: async () => {},
-      retryFailedNotes: async () => {},
-      clearAllErrors: async () => {},
-      filterByErrorStatus: () => {},
-      bulkRetryNotes: async () => {},
-      getFilteredStats: () => ({ total: 0, withErrors: 0, processing: 0, completed: 0, pending: 0, failed: 0 }),
-      getErrorBreakdown: () => ({}),
-      bulkClearErrors: async () => {},
-      retryByErrorType: async () => {},
-    }
-  }
-
+  // All hooks must be called unconditionally - check enabled inside callbacks
   const fetchNotes = useCallback(async (resetOffset = true) => {
+    if (!enabled) return // Early exit inside callback is safe
     try {
       setError(null)
       
@@ -137,19 +117,21 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
     } finally {
       setLoading(false)
     }
-  }, [limit, search, errorFilter, includeErrorFields]) // Remove offset from dependencies to prevent infinite loops
+  }, [limit, search, errorFilter, includeErrorFields, enabled]) // Remove offset from dependencies to prevent infinite loops
 
   const refresh = useCallback(async () => {
+    if (!enabled) return
     setLoading(true)
     offsetRef.current = 0
     await fetchNotes(true)
-  }, [fetchNotes])
+  }, [fetchNotes, enabled])
 
   const loadMore = useCallback(async () => {
+    if (!enabled) return
     if (hasMore && !loading) {
       await fetchNotes(false)
     }
-  }, [fetchNotes, hasMore, loading])
+  }, [fetchNotes, hasMore, loading, enabled])
 
   const retryNote = useCallback(async (noteId: string) => {
     try {
@@ -574,7 +556,7 @@ export function useNotes(options: FetchNotesOptions = {}): UseNotesReturn {
       cleanup() // Flush any pending updates
       unsubscribe() // Unsubscribe from channel
     }
-  }, [notes.length]) // Only re-subscribe when number of notes changes, not on every update
+  }, [notes.length, enabled]) // Only re-subscribe when number of notes changes or enabled changes
 
   // Initial load and when search or error filter changes
   useEffect(() => {

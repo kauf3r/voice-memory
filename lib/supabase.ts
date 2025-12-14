@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 // Validate required environment variables
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -16,55 +16,16 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 // Global singleton to prevent multiple instances
 const GLOBAL_KEY = '__VOICE_MEMORY_SUPABASE_CLIENT__'
 
-// Create the Supabase client with optimized configuration (singleton)
+// Create the Supabase client using SSR package for consistent cookie-based auth
 function createSupabaseClient() {
   // Check for existing global instance first
   if (typeof window !== 'undefined' && (window as any)[GLOBAL_KEY]) {
     return (window as any)[GLOBAL_KEY]
   }
-  
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-      storageKey: 'voice-memory-auth-token', // Unique storage key
-      storage: typeof window !== 'undefined' ? {
-        getItem: (key: string) => {
-          try {
-            return window.localStorage.getItem(key)
-          } catch {
-            return null
-          }
-        },
-        setItem: (key: string, value: string) => {
-          try {
-            window.localStorage.setItem(key, value)
-          } catch {
-            // Storage might be disabled
-          }
-        },
-        removeItem: (key: string) => {
-          try {
-            window.localStorage.removeItem(key)
-          } catch {
-            // Storage might be disabled
-          }
-        },
-      } : undefined,
-    },
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
-      },
-    },
-    global: {
-      headers: {
-        'X-Client-Info': 'voice-memory-app',
-      },
-    },
-  })
+
+  // Use createBrowserClient from @supabase/ssr for cookie-based session storage
+  // This matches the server-side createServerSupabaseClient for consistent auth
+  const client = createBrowserClient(supabaseUrl!, supabaseAnonKey!)
 
   // Store globally in browser
   if (typeof window !== 'undefined') {
@@ -73,33 +34,10 @@ function createSupabaseClient() {
 
   // Enhanced error handling for development
   if (process.env.NODE_ENV === 'development') {
-    console.log('🔌 Supabase client initialized (global singleton):', {
+    console.log('🔌 Supabase browser client initialized (cookie-based auth):', {
       url: supabaseUrl?.substring(0, 30) + '...',
-      hasAnonKey: !!supabaseAnonKey,
-      version: '2.2.0'
+      hasAnonKey: !!supabaseAnonKey
     })
-  }
-
-  // Add connection monitoring (client-side only, with safety checks)
-  if (typeof window !== 'undefined' && client.realtime) {
-    // Check if methods exist before calling them
-    if (typeof client.realtime.onOpen === 'function') {
-      client.realtime.onOpen(() => {
-        console.log('🟢 Supabase realtime connected')
-      })
-    }
-
-    if (typeof client.realtime.onClose === 'function') {
-      client.realtime.onClose(() => {
-        console.log('🔴 Supabase realtime disconnected')
-      })
-    }
-
-    if (typeof client.realtime.onError === 'function') {
-      client.realtime.onError((error: any) => {
-        console.error('❌ Supabase realtime error:', error)
-      })
-    }
   }
 
   return client
