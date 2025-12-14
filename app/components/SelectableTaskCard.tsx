@@ -63,7 +63,7 @@ export default function SelectableTaskCard({
             onChange={handleSelectionChange}
             className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
             data-testid="task-selection-checkbox"
-            aria-label={`Select task: ${task.text}`}
+            aria-label={`Select task: ${task.description}`}
           />
         </div>
 
@@ -147,11 +147,12 @@ export default function SelectableTaskCard({
             <div className="flex items-center gap-2 ml-4 flex-shrink-0">
               {/* Completion Toggle */}
               <AccessibleCheckbox
+                id={`task-completion-${task.id}`}
+                name={`task-completion-${task.id}`}
+                label={task.description}
                 checked={task.completed}
                 onChange={(checked) => onTaskCompletion(task, checked)}
                 disabled={loadingTasks.has(task.id)}
-                taskId={task.id}
-                taskText={task.text}
               />
 
               {/* Pin Button */}
