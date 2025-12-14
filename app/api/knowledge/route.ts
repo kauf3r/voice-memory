@@ -81,7 +81,7 @@ export async function PUT(request: NextRequest) {
 
     // Authenticate user with fallback support
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     const authContext = await AuthenticationService.authenticateWithFallback(authHeader, supabase)
 

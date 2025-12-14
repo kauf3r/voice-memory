@@ -57,6 +57,7 @@
     "embla-carousel-react": "^8.6.0",
     "fluent-ffmpeg": "^2.1.2",
     "harden-react-markdown": "^1.0.3",
+    "isows": "^1.0.7",
     "katex": "^0.16.22",
     "lucide-react": "^0.539.0",
     "next": "15.4.8",

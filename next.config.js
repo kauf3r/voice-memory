@@ -15,9 +15,10 @@ const nextConfig = {
   // Compression
   compress: true,
 
-  // Bundle analyzer (only in development)
-  ...(process.env.ANALYZE === 'true' && {
-    webpack: (config) => {
+  // Webpack configuration
+  webpack: (config, { isServer }) => {
+    // Handle bundle analyzer
+    if (process.env.ANALYZE === 'true') {
       const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
       config.plugins.push(
         new BundleAnalyzerPlugin({
@@ -25,9 +26,20 @@ const nextConfig = {
           openAnalyzer: false,
         })
       )
-      return config
-    },
-  }),
+    }
+
+    // Fix for isows module (Supabase realtime dependency)
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        net: false,
+        tls: false,
+        fs: false,
+      }
+    }
+
+    return config
+  },
 
   // Headers for caching and security
   async headers() {

@@ -121,7 +121,7 @@ async function getCachedGlobalStats() {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     const url = new URL(request.url)
     const scope = url.searchParams.get('scope') || 'user'
     
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
 // Optional: Allow cache invalidation via DELETE request
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     if (authHeader && authHeader.startsWith('Bearer ')) {

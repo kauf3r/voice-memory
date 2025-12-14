@@ -4,7 +4,7 @@ import { processingService } from '@/lib/processing/ProcessingService'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     // Get auth token from header
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')

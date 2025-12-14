@@ -1,5 +1,14 @@
 import { z } from 'zod'
 
+// Domain enum for BIB categorization
+const DomainEnum = z.enum(['WORK', 'PERS', 'PROJ', 'IDEA'])
+
+// Severity enum for blockers
+const SeverityEnum = z.enum(['critical', 'moderate', 'minor'])
+
+// Time sensitivity enum for opportunities
+const TimeSensitivityEnum = z.enum(['urgent', 'soon', 'someday'])
+
 // Zod schema for validating GPT-4 analysis results - Match the flat structure from analysis.ts
 export const AnalysisSchema = z.object({
   sentiment: z.object({
@@ -33,6 +42,36 @@ export const AnalysisSchema = z.object({
     topic: z.string(),
     purpose: z.string(),
   })).default([]),
+
+  // BIB Framework fields
+  theOneThing: z.object({
+    description: z.string(),
+    domain: DomainEnum,
+    whyImportant: z.string(),
+  }).nullable().optional(),
+
+  blockers: z.array(z.object({
+    description: z.string(),
+    severity: SeverityEnum,
+    domain: DomainEnum,
+    potentialSolutions: z.array(z.string()).default([]),
+  })).default([]),
+
+  opportunities: z.array(z.object({
+    description: z.string(),
+    domain: DomainEnum,
+    timeSensitivity: TimeSensitivityEnum,
+    nextAction: z.string(),
+  })).default([]),
+
+  sopCandidates: z.array(z.object({
+    triggerPhrase: z.string(),
+    processDescription: z.string(),
+    suggestedTitle: z.string(),
+    domain: DomainEnum,
+    confidence: z.number().min(0).max(1),
+  })).default([]),
+
   structuredData: z.object({
     dates: z.array(z.object({
       date: z.string(),
@@ -128,6 +167,15 @@ interface RawAnalysisData {
     projectKnowledgeUpdates?: unknown
   }
   outreachIdeas?: unknown
+  // BIB Framework fields
+  theOneThing?: {
+    description?: unknown
+    domain?: unknown
+    whyImportant?: unknown
+  } | null
+  blockers?: unknown
+  opportunities?: unknown
+  sopCandidates?: unknown
   structuredData?: {
     dates?: unknown
     times?: unknown
@@ -199,6 +247,66 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
           typeof idea.topic === 'string' &&
           typeof idea.purpose === 'string'
         )
+      : [],
+    // BIB Framework fields with fallbacks
+    theOneThing: raw?.theOneThing &&
+      typeof raw.theOneThing.description === 'string' &&
+      typeof raw.theOneThing.domain === 'string' &&
+      ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(raw.theOneThing.domain) &&
+      typeof raw.theOneThing.whyImportant === 'string'
+        ? {
+            description: raw.theOneThing.description,
+            domain: raw.theOneThing.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
+            whyImportant: raw.theOneThing.whyImportant,
+          }
+        : null,
+    blockers: Array.isArray(raw?.blockers)
+      ? raw.blockers.filter((b) =>
+          b && typeof b.description === 'string' &&
+          typeof b.severity === 'string' &&
+          ['critical', 'moderate', 'minor'].includes(b.severity) &&
+          typeof b.domain === 'string' &&
+          ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(b.domain)
+        ).map((b) => ({
+          description: b.description,
+          severity: b.severity as 'critical' | 'moderate' | 'minor',
+          domain: b.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
+          potentialSolutions: Array.isArray(b.potentialSolutions)
+            ? b.potentialSolutions.filter((s: unknown) => typeof s === 'string')
+            : [],
+        }))
+      : [],
+    opportunities: Array.isArray(raw?.opportunities)
+      ? raw.opportunities.filter((o) =>
+          o && typeof o.description === 'string' &&
+          typeof o.domain === 'string' &&
+          ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(o.domain) &&
+          typeof o.timeSensitivity === 'string' &&
+          ['urgent', 'soon', 'someday'].includes(o.timeSensitivity) &&
+          typeof o.nextAction === 'string'
+        ).map((o) => ({
+          description: o.description,
+          domain: o.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
+          timeSensitivity: o.timeSensitivity as 'urgent' | 'soon' | 'someday',
+          nextAction: o.nextAction,
+        }))
+      : [],
+    sopCandidates: Array.isArray(raw?.sopCandidates)
+      ? raw.sopCandidates.filter((s) =>
+          s && typeof s.triggerPhrase === 'string' &&
+          typeof s.processDescription === 'string' &&
+          typeof s.suggestedTitle === 'string' &&
+          typeof s.domain === 'string' &&
+          ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(s.domain) &&
+          typeof s.confidence === 'number' &&
+          s.confidence >= 0 && s.confidence <= 1
+        ).map((s) => ({
+          triggerPhrase: s.triggerPhrase,
+          processDescription: s.processDescription,
+          suggestedTitle: s.suggestedTitle,
+          domain: s.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
+          confidence: s.confidence,
+        }))
       : [],
     structuredData: {
       dates: Array.isArray(raw?.structuredData?.dates)

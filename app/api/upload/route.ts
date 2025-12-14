@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     // Get authorization header - try both lowercase and capitalized
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
     
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     console.log('Supabase client created')
     
     // Try to get user from session

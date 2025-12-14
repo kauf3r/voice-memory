@@ -107,6 +107,40 @@ export interface RetryRequest {
   batchSize?: number
 }
 
+// Domain types for BIB categorization
+export type BIBDomain = 'WORK' | 'PERS' | 'PROJ' | 'IDEA'
+export type BlockerSeverity = 'critical' | 'moderate' | 'minor'
+export type TimeSensitivity = 'urgent' | 'soon' | 'someday'
+
+// BIB Framework types
+export interface TheOneThing {
+  description: string
+  domain: BIBDomain
+  whyImportant: string
+}
+
+export interface Blocker {
+  description: string
+  severity: BlockerSeverity
+  domain: BIBDomain
+  potentialSolutions: string[]
+}
+
+export interface Opportunity {
+  description: string
+  domain: BIBDomain
+  timeSensitivity: TimeSensitivity
+  nextAction: string
+}
+
+export interface SOPCandidate {
+  triggerPhrase: string
+  processDescription: string
+  suggestedTitle: string
+  domain: BIBDomain
+  confidence: number // 0.0 - 1.0
+}
+
 export interface NoteAnalysis {
   sentiment: {
     classification: 'Positive' | 'Neutral' | 'Negative'
@@ -139,6 +173,11 @@ export interface NoteAnalysis {
     topic: string
     purpose: string
   }>
+  // BIB Framework fields
+  theOneThing?: TheOneThing | null
+  blockers?: Blocker[]
+  opportunities?: Opportunity[]
+  sopCandidates?: SOPCandidate[]
   structuredData: {
     dates: Array<{
       date: string
