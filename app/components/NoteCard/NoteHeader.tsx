@@ -9,8 +9,8 @@ interface NoteHeaderProps {
   statusIcon: string
   statusText: string
   statusColorClasses: string
-  sentiment?: any
-  sentimentColorClasses: string
+  mood?: string | null
+  moodColorClasses: string
   processingAttempts?: number
   isProcessing: boolean
   hasError: boolean
@@ -26,15 +26,15 @@ interface NoteHeaderProps {
   showProcessButton?: boolean
 }
 
-export default function NoteHeader({ 
-  recordedAt, 
-  durationSeconds, 
+export default function NoteHeader({
+  recordedAt,
+  durationSeconds,
   processingStartedAt,
-  statusIcon, 
-  statusText, 
+  statusIcon,
+  statusText,
   statusColorClasses,
-  sentiment,
-  sentimentColorClasses,
+  mood,
+  moodColorClasses,
   processingAttempts,
   isProcessing,
   hasError,
@@ -83,9 +83,9 @@ export default function NoteHeader({
           )}
         </div>
         
-        {sentiment && (
-          <div className={`text-sm mt-1 ${sentimentColorClasses}`}>
-            Sentiment: {sentiment.classification} ({Math.round(sentiment.confidence * 100)}%)
+        {mood && (
+          <div className={`text-sm mt-1 capitalize ${moodColorClasses}`}>
+            Mood: {mood}
           </div>
         )}
       </div>
