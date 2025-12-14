@@ -65,3 +65,38 @@ export async function createServerClient() {
     }
   )
 }
+
+// Authenticate user from Bearer token
+export async function getAuthenticatedUser(token: string) {
+  try {
+    if (!token) {
+      return { user: null, error: new Error('No token provided'), client: null }
+    }
+
+    const client = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    )
+
+    const { data: { user }, error } = await client.auth.getUser(token)
+
+    if (error || !user) {
+      return { user: null, error: error || new Error('User not found'), client: null }
+    }
+
+    return { user, error: null, client }
+  } catch (error) {
+    return { user: null, error: error as Error, client: null }
+  }
+}

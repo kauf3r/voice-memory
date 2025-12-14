@@ -4,7 +4,7 @@ import { CACHE_CONFIGS, getCachedProcessedContent } from '@/lib/cache/response-c
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     // Try to get user from Authorization header first
     let user = null
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     // Try to get user from Authorization header first
     let user = null

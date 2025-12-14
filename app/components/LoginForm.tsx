@@ -19,16 +19,18 @@ export default function LoginForm() {
       // Check URL search params
       const urlParams = new URLSearchParams(window.location.search)
       const urlError = urlParams.get('error')
-      
+      const urlDetails = urlParams.get('details')
+
       // Also check hash params (for Supabase errors)
       const hashParams = new URLSearchParams(window.location.hash.substring(1))
       const hashError = hashParams.get('error')
       const hashErrorCode = hashParams.get('error_code')
       const hashErrorDescription = hashParams.get('error_description')
-      
+
       if (urlError) {
-        const errorMessage = decodeURIComponent(urlError)
-        console.log('Auth callback error:', errorMessage)
+        // Use the details if provided, otherwise use the error code
+        const errorMessage = urlDetails ? decodeURIComponent(urlDetails) : decodeURIComponent(urlError)
+        console.log('Auth callback error:', urlError, errorMessage)
         setError(errorMessage)
       } else if (hashError) {
         let errorMessage = decodeURIComponent(hashErrorDescription || hashError)
@@ -38,7 +40,7 @@ export default function LoginForm() {
         console.log('Auth error from hash:', errorMessage)
         setError(errorMessage)
       }
-      
+
       // Clear the error from URL after a short delay
       if (urlError || hashError) {
         setTimeout(() => {

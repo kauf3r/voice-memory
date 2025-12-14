@@ -30,9 +30,11 @@ function getOpenAIClient(): OpenAI {
 }
 
 // Configurable model names with environment variable fallbacks
+// GPT-4o is recommended: 50% cheaper than gpt-4-turbo, faster, same quality
+// Options: gpt-4o (recommended), gpt-4o-mini (budget), gpt-4-turbo (legacy)
 const OPENAI_MODELS = {
   whisper: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
-  gpt: process.env.OPENAI_GPT_MODEL || 'gpt-4-turbo-preview'
+  gpt: process.env.OPENAI_GPT_MODEL || 'gpt-4o'
 }
 
 // Rate limiting configuration
@@ -377,7 +379,7 @@ export async function analyzeTranscription(
         }
       ],
       temperature: 0.3,
-      max_tokens: 2000,
+      max_tokens: 3500, // Increased for BIB analysis fields (theOneThing, blockers, opportunities, sopCandidates)
     })
 
     const responseText = completion.choices[0]?.message?.content?.trim()

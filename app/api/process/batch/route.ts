@@ -35,7 +35,7 @@ async function authenticateRequest(request: NextRequest): Promise<{
   }
   
   // User request - perform authentication
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   
   // Try to get user from Authorization header first
   let user = null

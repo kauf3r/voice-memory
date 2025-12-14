@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUserScopedClient } from '@/lib/supabase-server'
-import { validateTaskId, validateRequest, sanitizeErrorMessage } from '@/lib/utils/validation'
+import { validateTaskId, sanitizeErrorMessage } from '@/lib/utils/validation'
 import { createClient } from '@supabase/supabase-js'
 import { createDatabaseService } from '@/lib/database/queries'
 

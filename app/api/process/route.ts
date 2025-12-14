@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
   
   try {
     console.log('🔧 Creating Supabase client...')
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     // Try to get user from Authorization header first
     console.log('🔑 Authenticating user...')
@@ -468,7 +468,7 @@ export async function POST(request: NextRequest) {
 // Batch processing endpoint
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     
     // Get the current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()

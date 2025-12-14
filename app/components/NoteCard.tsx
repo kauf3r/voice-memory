@@ -2,7 +2,7 @@
 
 import { Note } from '@/lib/types'
 import { useState, memo } from 'react'
-import LazyAnalysisView from './LazyAnalysisView'
+import AnalysisView from './AnalysisView'
 
 // Import custom hooks
 import { useNoteActions, useNoteStatus, useNoteContent } from './hooks'
@@ -133,7 +133,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
       {/* Expanded Content */}
       {isExpanded && (
         <div className="mt-6 pt-6 border-t border-gray-200">
-          <LazyAnalysisView
+          <AnalysisView
             noteId={note.id}
             analysis={note.analysis || null}
             transcription={note.transcription}

@@ -128,10 +128,13 @@ Complete reference for all environment variables used in the Voice Memory applic
 - **Description**: Whisper model for audio transcription.
 
 #### `OPENAI_GPT_MODEL`
-- **Default**: `gpt-4-turbo-preview`
+- **Default**: `gpt-4o`
 - **Type**: String
-- **Options**: `gpt-4-turbo-preview`, `gpt-4`, `gpt-3.5-turbo`
-- **Description**: GPT model for content analysis.
+- **Options**:
+  - `gpt-4o` - **RECOMMENDED** - Best quality/cost ratio ($5/$15 per 1M tokens)
+  - `gpt-4o-mini` - Budget option, good for simple tasks ($0.15/$0.60 per 1M tokens)
+  - `gpt-4-turbo` - Legacy, use gpt-4o instead ($10/$30 per 1M tokens)
+- **Description**: GPT model for content analysis. GPT-4o offers same quality as GPT-4-turbo at 50% lower cost.
 
 ### Rate Limiting
 
@@ -318,7 +321,7 @@ BATCH_SIZE=5
 PROCESSING_TIMEOUT_MINUTES=14
 USE_DATABASE_RATE_LIMITING=true
 OPENAI_WHISPER_MODEL=whisper-1
-OPENAI_GPT_MODEL=gpt-4-turbo-preview
+OPENAI_GPT_MODEL=gpt-4o
 NEXT_PUBLIC_MAX_FILE_SIZE=25000000
 NEXT_TELEMETRY_DISABLED=1
 ```

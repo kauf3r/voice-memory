@@ -5,7 +5,6 @@ import { PinnedTasksProvider } from './components/PinnedTasksProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ProcessingStatsProvider } from '@/lib/contexts/ProcessingStatsContext'
 import { ToastProvider } from './components/ToastProvider'
-import AuthDebugInfo from './components/AuthDebugInfo'
 import BetaFeatures from './components/BetaFeatures'
 
 // Use system fonts instead of Google Fonts to avoid build issues
@@ -69,7 +68,6 @@ export default function RootLayout({
               <PinnedTasksProvider>
                 <ProcessingStatsProvider>
                   {children}
-                  <AuthDebugInfo />
                   <BetaFeatures />
                 </ProcessingStatsProvider>
               </PinnedTasksProvider>
