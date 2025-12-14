@@ -335,19 +335,32 @@ export class AudioFormatNormalizationService {
       // Create temporary files
       const tempDir = os.tmpdir()
       const inputFile = path.join(tempDir, `input_${Date.now()}.m4a`)
-      const outputFile = path.join(tempDir, `output_${Date.now()}.wav`)
 
       // Write input buffer to temp file
       fs.writeFileSync(inputFile, buffer)
 
+      // Estimate WAV size (16kHz mono 16-bit = 32KB/sec)
+      // If original file > 800KB, MP3 is safer to stay under 25MB limit
+      const useMP3 = buffer.length > 800 * 1024
+      const outputFormat = useMP3 ? 'mp3' : 'wav'
+      const outputFile = path.join(tempDir, `output_${Date.now()}.${outputFormat}`)
+
       // Convert using FFmpeg
       await new Promise<void>((resolve, reject) => {
-        ffmpeg(inputFile)
-          .toFormat('wav')
-          .audioCodec('pcm_s16le') // 16-bit PCM
+        const cmd = ffmpeg(inputFile)
           .audioChannels(1) // Mono for better Whisper compatibility
           .audioFrequency(16000) // 16kHz sample rate (Whisper optimal)
-          .on('end', () => resolve())
+
+        if (useMP3) {
+          cmd.toFormat('mp3')
+            .audioCodec('libmp3lame')
+            .audioBitrate('64k') // Low bitrate for speech, keeps file small
+        } else {
+          cmd.toFormat('wav')
+            .audioCodec('pcm_s16le') // 16-bit PCM
+        }
+
+        cmd.on('end', () => resolve())
           .on('error', (error: Error) => reject(error))
           .save(outputFile)
       })
@@ -363,13 +376,14 @@ export class AudioFormatNormalizationService {
         console.warn('Failed to cleanup temp files:', cleanupError)
       }
 
-      warnings.push('Successfully converted M4A to WAV using FFmpeg')
-      warnings.push('Optimized for Whisper: 16kHz mono PCM')
+      const outputMimeType = useMP3 ? 'audio/mpeg' : 'audio/wav'
+      warnings.push(`Successfully converted M4A to ${outputFormat.toUpperCase()} using FFmpeg`)
+      warnings.push(`Optimized for Whisper: 16kHz mono${useMP3 ? ' 64kbps' : ' PCM'}`)
 
       return {
         success: true,
         buffer: convertedBuffer,
-        mimeType: 'audio/wav',
+        mimeType: outputMimeType,
         warnings
       }
 

@@ -25,7 +25,7 @@ interface NoteCardProps {
 }
 
 function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [showTranscript, setShowTranscript] = useState(false)
 
   // Custom hooks for functionality
   const { isDeleting, isRetrying, isProcessing: isProcessingNow, handleDelete, handleRetry, handleProcessNow } = useNoteActions({
@@ -95,51 +95,59 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
         />
       )}
 
-      {/* Primary Topic */}
-      {primaryTopic && (
+      {/* Primary Topic - only show for unprocessed notes (AnalysisView shows topics for processed) */}
+      {primaryTopic && !note.analysis && (
         <NoteTopic
           primaryTopic={primaryTopic}
           minorTopics={minorTopics}
         />
       )}
 
-      {/* Quick Stats */}
-      {note.analysis && (
-        <NoteStats
-          myTasks={quickStats.myTasks}
-          keyIdeas={quickStats.keyIdeas}
-          messages={quickStats.messages}
+      {/* Show Analysis First (when available) */}
+      {note.analysis ? (
+        <>
+          {/* Full Analysis View - shown by default for processed notes */}
+          <div className="mt-4">
+            <AnalysisView
+              analysis={note.analysis}
+              transcription={note.transcription}
+              className="space-y-6"
+            />
+          </div>
+
+          {/* Show Transcript Button */}
+          {note.transcription && (
+            <>
+              <button
+                onClick={() => setShowTranscript(!showTranscript)}
+                className="w-full text-center text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors mt-4"
+              >
+                {showTranscript ? 'Hide transcript' : 'Show transcript'}
+              </button>
+
+              {/* Expandable Transcript */}
+              {showTranscript && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">Full Transcript</h4>
+                  <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {note.transcription}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        /* Show processing status/transcript for unprocessed notes */
+        <NoteContent
+          transcription={note.transcription}
+          hasError={hasError}
+          errorSeverity={errorSeverity}
+          isProcessing={isProcessing}
+          loadingStateMessage={getLoadingStateMessage()}
         />
-      )}
-
-      {/* Enhanced Content Display with Better Loading States */}
-      <NoteContent
-        transcription={note.transcription}
-        hasError={hasError}
-        errorSeverity={errorSeverity}
-        isProcessing={isProcessing}
-        loadingStateMessage={getLoadingStateMessage()}
-      />
-
-      {/* Expand Button */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full text-center text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-        disabled={!note.analysis && !note.transcription}
-      >
-        {isExpanded ? 'Show less' : 'Show full analysis'}
-      </button>
-
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <AnalysisView
-            noteId={note.id}
-            analysis={note.analysis || null}
-            transcription={note.transcription}
-            className="space-y-6"
-          />
-        </div>
       )}
     </div>
   )
