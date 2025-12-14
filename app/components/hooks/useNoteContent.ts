@@ -23,21 +23,21 @@ export function useNoteContent(note: Note) {
     }
 
     const analysis = note.analysis
-    const myTasks = analysis.myTasks?.length || 0
+    const myTasks = analysis.tasks?.myTasks?.length || 0
     const keyIdeas = analysis.keyIdeas?.length || 0
-    const messages = analysis.messages?.length || 0
+    const messages = analysis.messagesToDraft?.length || 0
 
     return { myTasks, keyIdeas, messages }
   }, [note.analysis])
 
   const primaryTopic = useMemo(() => {
-    if (!note.analysis?.topics?.length) return null
-    return note.analysis.topics[0]
+    if (!note.analysis?.focusTopics?.primary) return null
+    return note.analysis.focusTopics.primary
   }, [note.analysis])
 
   const minorTopics = useMemo(() => {
-    if (!note.analysis?.topics?.length) return []
-    return note.analysis.topics.slice(1)
+    if (!note.analysis?.focusTopics?.minor) return []
+    return note.analysis.focusTopics.minor
   }, [note.analysis])
 
   const sentiment = useMemo(() => {
