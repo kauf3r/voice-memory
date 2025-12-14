@@ -1,7 +1,7 @@
 'use client'
 
 import { NoteAnalysis, AnalysisTask } from '@/lib/types'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import MessageDrafter from './MessageDrafter'
 
 interface AnalysisViewProps {
@@ -11,6 +11,73 @@ interface AnalysisViewProps {
   className?: string
 }
 
+// Helper to normalize legacy analysis format to new format
+function normalizeAnalysis(analysis: any): {
+  tasks: AnalysisTask[]
+  draftMessages: any[]
+  topic: string
+  mood: string
+  summary: string
+  theOneThing: string | null
+  people: any[]
+} {
+  // Normalize tasks - handle both array (new) and object (legacy) formats
+  let tasks: AnalysisTask[] = []
+  if (Array.isArray(analysis.tasks)) {
+    tasks = analysis.tasks
+  } else if (analysis.tasks && typeof analysis.tasks === 'object') {
+    // Legacy format: { myTasks: [], delegatedTasks: [] }
+    const legacyTasks = analysis.tasks as { myTasks?: any[]; delegatedTasks?: any[] }
+    const myTasks = (legacyTasks.myTasks || []).map((task: any, i: number) => ({
+      title: typeof task === 'string' ? task : task.task || task.title || 'Task',
+      urgency: 'SOON' as const,
+      domain: 'WORK' as const,
+      context: typeof task === 'object' ? task.nextSteps : undefined,
+    }))
+    const delegatedTasks = (legacyTasks.delegatedTasks || []).map((task: any, i: number) => ({
+      title: typeof task === 'string' ? task : task.task || task.title || 'Task',
+      urgency: 'SOON' as const,
+      domain: 'WORK' as const,
+      assignedTo: typeof task === 'object' ? task.assignedTo : undefined,
+      context: typeof task === 'object' ? task.nextSteps : undefined,
+    }))
+    tasks = [...myTasks, ...delegatedTasks]
+  }
+
+  // Normalize messages - handle both draftMessages (new) and messagesToDraft (legacy)
+  const draftMessages = analysis.draftMessages || analysis.messagesToDraft || []
+
+  // Normalize topic - handle both string (new) and object (legacy) formats
+  let topic = analysis.topic || ''
+  if (!topic && analysis.topics) {
+    topic = analysis.topics.primary || analysis.topics[0] || ''
+  }
+
+  // Normalize mood - handle both string (new) and object (legacy) formats
+  let mood = analysis.mood || 'neutral'
+  if (!mood && analysis.sentiment) {
+    mood = analysis.sentiment.classification || analysis.sentiment.overall || 'neutral'
+  }
+
+  // Summary and theOneThing
+  const summary = analysis.summary || analysis.keyIdeas?.[0] || ''
+
+  // theOneThing can be a string (legacy) or object (new format with domain, description, whyImportant)
+  let theOneThing: string | null = null
+  if (analysis.theOneThing) {
+    if (typeof analysis.theOneThing === 'string') {
+      theOneThing = analysis.theOneThing
+    } else if (typeof analysis.theOneThing === 'object' && analysis.theOneThing.description) {
+      theOneThing = analysis.theOneThing.description
+    }
+  }
+
+  // People
+  const people = analysis.people || analysis.mentionedPeople || []
+
+  return { tasks, draftMessages, topic, mood, summary, theOneThing, people }
+}
+
 export default function AnalysisView({
   analysis,
   transcription,
@@ -18,6 +85,9 @@ export default function AnalysisView({
   className = ''
 }: AnalysisViewProps) {
   const [activeSection, setActiveSection] = useState<string>('overview')
+
+  // Normalize the analysis to handle legacy formats
+  const normalized = useMemo(() => normalizeAnalysis(analysis), [analysis])
 
   const getMoodEmoji = (mood: string) => {
     switch (mood?.toLowerCase()) {
@@ -53,18 +123,18 @@ export default function AnalysisView({
     }
   }
 
-  // Group tasks by urgency for display
+  // Group tasks by urgency for display (using normalized data)
   const tasksByUrgency = {
-    NOW: analysis.tasks?.filter(t => t.urgency === 'NOW') || [],
-    SOON: analysis.tasks?.filter(t => t.urgency === 'SOON') || [],
-    LATER: analysis.tasks?.filter(t => t.urgency === 'LATER') || []
+    NOW: normalized.tasks.filter(t => t.urgency === 'NOW'),
+    SOON: normalized.tasks.filter(t => t.urgency === 'SOON'),
+    LATER: normalized.tasks.filter(t => t.urgency === 'LATER')
   }
 
   const sections = [
     { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'tasks', label: 'Tasks', icon: '✅', count: analysis.tasks?.length || 0 },
-    { id: 'messages', label: 'Messages', icon: '✉️', count: analysis.draftMessages?.length || 0 },
-    { id: 'people', label: 'People', icon: '👥', count: analysis.people?.length || 0 },
+    { id: 'tasks', label: 'Tasks', icon: '✅', count: normalized.tasks.length },
+    { id: 'messages', label: 'Messages', icon: '✉️', count: normalized.draftMessages.length },
+    { id: 'people', label: 'People', icon: '👥', count: normalized.people.length },
   ]
 
   const renderTaskCard = (task: AnalysisTask, index: number) => (
@@ -103,38 +173,38 @@ export default function AnalysisView({
     <div className="space-y-6">
       {/* Summary */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-        <p className="text-gray-800 text-lg">{analysis.summary || 'No summary available'}</p>
+        <p className="text-gray-800 text-lg">{normalized.summary || 'No summary available'}</p>
       </div>
 
       {/* Quick Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Mood */}
-        <div className={`rounded-lg p-4 text-center border ${getMoodColor(analysis.mood)}`}>
-          <div className="text-2xl mb-1">{getMoodEmoji(analysis.mood)}</div>
-          <div className="text-sm font-medium capitalize">{analysis.mood || 'neutral'}</div>
+        <div className={`rounded-lg p-4 text-center border ${getMoodColor(normalized.mood)}`}>
+          <div className="text-2xl mb-1">{getMoodEmoji(normalized.mood)}</div>
+          <div className="text-sm font-medium capitalize">{normalized.mood}</div>
         </div>
 
         {/* Topic */}
         <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
           <div className="text-2xl mb-1">🎯</div>
-          <div className="text-sm font-medium text-blue-800">{analysis.topic || 'General'}</div>
+          <div className="text-sm font-medium text-blue-800">{normalized.topic || 'General'}</div>
         </div>
 
         {/* Tasks Count */}
         <div className="bg-purple-50 rounded-lg p-4 text-center border border-purple-200">
-          <div className="text-2xl font-bold text-purple-600">{analysis.tasks?.length || 0}</div>
+          <div className="text-2xl font-bold text-purple-600">{normalized.tasks.length}</div>
           <div className="text-sm text-purple-600">Tasks</div>
         </div>
 
         {/* Messages Count */}
         <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
-          <div className="text-2xl font-bold text-green-600">{analysis.draftMessages?.length || 0}</div>
+          <div className="text-2xl font-bold text-green-600">{normalized.draftMessages.length}</div>
           <div className="text-sm text-green-600">Messages</div>
         </div>
       </div>
 
       {/* The One Thing - Hero Section */}
-      {analysis.theOneThing && (
+      {normalized.theOneThing && (
         <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg p-6 border-2 border-yellow-300">
           <div className="flex items-start gap-3">
             <span className="text-3xl">⭐</span>
@@ -143,7 +213,7 @@ export default function AnalysisView({
                 The One Thing
               </h3>
               <p className="text-xl font-medium text-yellow-900">
-                {analysis.theOneThing}
+                {normalized.theOneThing}
               </p>
             </div>
           </div>
@@ -237,7 +307,7 @@ export default function AnalysisView({
       )}
 
       {/* Empty State */}
-      {!analysis.tasks?.length && (
+      {normalized.tasks.length === 0 && (
         <div className="text-center py-8 text-gray-500">
           <p>No tasks identified in this recording.</p>
         </div>
@@ -246,14 +316,14 @@ export default function AnalysisView({
   )
 
   const renderMessages = () => (
-    <MessageDrafter messages={analysis.draftMessages} />
+    <MessageDrafter messages={normalized.draftMessages} />
   )
 
   const renderPeople = () => (
     <div className="space-y-4">
-      {analysis.people && analysis.people.length > 0 ? (
+      {normalized.people.length > 0 ? (
         <div className="grid md:grid-cols-2 gap-4">
-          {analysis.people.map((person, index) => (
+          {normalized.people.map((person, index) => (
             <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">

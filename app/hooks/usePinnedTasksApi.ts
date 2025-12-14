@@ -103,14 +103,16 @@ export function usePinnedTasksApi({
   const unpinTask = useCallback(async (taskId: string) => {
     if (!user) return
 
+    // Define outside try block so it's accessible in catch
+    let originalTaskIds: string[] = []
+
     try {
       setError(null)
       const accessToken = await getAuthToken()
 
       // Handle optimistic update
       let shouldProceed = true
-      let originalTaskIds: string[] = []
-      
+
       setPinnedTaskIds(prev => {
         const result = OptimisticUpdater.handleOptimisticUnpin(taskId, prev)
         shouldProceed = result.shouldProceed
@@ -148,15 +150,17 @@ export function usePinnedTasksApi({
   const reorderPin = useCallback(async (taskId: string, newIndex: number) => {
     if (!user) return
 
+    // Define outside try block so it's accessible in catch
+    let originalOrder: string[] = []
+
     try {
       setError(null)
       const accessToken = await getAuthToken()
 
       // Handle optimistic update
       let shouldProceed = true
-      let originalOrder: string[] = []
       let currentIndex = -1
-      
+
       setPinnedTaskIds(prev => {
         const result = OptimisticUpdater.handleOptimisticReorder(taskId, newIndex, prev)
         shouldProceed = result.shouldProceed

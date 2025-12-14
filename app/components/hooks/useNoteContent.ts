@@ -23,11 +23,26 @@ export function useNoteContent(note: Note) {
     }
 
     const analysis = note.analysis
-    const tasks = analysis.tasks?.length || 0
-    const nowTasks = analysis.tasks?.filter(t => t.urgency === 'NOW').length || 0
-    const messages = analysis.draftMessages?.length || 0
 
-    return { tasks, nowTasks, messages }
+    // Handle both new format (array) and legacy format (object with myTasks/delegatedTasks)
+    let taskCount = 0
+    let nowTaskCount = 0
+
+    if (Array.isArray(analysis.tasks)) {
+      // New format: tasks is an array of AnalysisTask
+      taskCount = analysis.tasks.length
+      nowTaskCount = analysis.tasks.filter(t => t.urgency === 'NOW').length
+    } else if (analysis.tasks && typeof analysis.tasks === 'object') {
+      // Legacy format: tasks is { myTasks: [], delegatedTasks: [] }
+      const legacyTasks = analysis.tasks as { myTasks?: unknown[]; delegatedTasks?: unknown[] }
+      taskCount = (legacyTasks.myTasks?.length || 0) + (legacyTasks.delegatedTasks?.length || 0)
+      nowTaskCount = 0 // Legacy format doesn't have urgency
+    }
+
+    // Handle both draftMessages (new) and messagesToDraft (legacy)
+    const messages = analysis.draftMessages?.length || (analysis as any).messagesToDraft?.length || 0
+
+    return { tasks: taskCount, nowTasks: nowTaskCount, messages }
   }, [note.analysis])
 
   const topic = useMemo(() => {
@@ -43,7 +58,12 @@ export function useNoteContent(note: Note) {
   }, [note.analysis])
 
   const theOneThing = useMemo(() => {
-    return note.analysis?.theOneThing || null
+    const raw = note.analysis?.theOneThing
+    if (!raw) return null
+    // Handle both string (legacy) and object (new format) for theOneThing
+    if (typeof raw === 'string') return raw
+    if (typeof raw === 'object' && raw.description) return raw.description
+    return null
   }, [note.analysis])
 
   const hasFullAnalysis = useMemo(() => {

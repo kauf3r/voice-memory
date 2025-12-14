@@ -145,11 +145,12 @@ export default function DraggablePinnedTask({
           {/* Completion Checkbox */}
           <div className="pt-1">
             <AccessibleCheckbox
+              id={`task-${task.id}`}
+              name={`task-${task.id}`}
+              label={task.description}
               checked={task.completed}
               onChange={(checked) => onTaskCompletion(task, checked)}
               disabled={loadingTasks.has(task.id)}
-              taskId={task.id}
-              taskText={task.text}
             />
           </div>
           

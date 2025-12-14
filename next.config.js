@@ -1,5 +1,10 @@
+const path = require('path')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Fix workspace root detection for multiple lockfiles
+  outputFileTracingRoot: path.join(__dirname),
+
   // Enable experimental features for better performance
   experimental: {
     // optimizeCss: true, // Disabled due to CSS compilation error
