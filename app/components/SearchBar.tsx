@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthProvider'
+import { supabase } from '@/lib/supabase'
 
 interface SearchResult {
   id: string
@@ -39,7 +40,9 @@ export default function SearchBar({
 
   // Debounced search function
   const performSearch = async (searchQuery: string) => {
+    console.log('🔍 SearchBar performSearch called:', { searchQuery, hasUser: !!user })
     if (!searchQuery.trim() || !user) {
+      console.log('🔍 SearchBar early return:', { emptyQuery: !searchQuery.trim(), noUser: !user })
       setResults([])
       setShowResults(false)
       onSearchClear?.()
@@ -50,13 +53,28 @@ export default function SearchBar({
     onSearchStart?.()
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`)
-      
+      // Get the session token for authentication
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        console.log('🔍 SearchBar: No session token available')
+        return
+      }
+
+      console.log('🔍 SearchBar fetching:', `/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`)
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
       if (!response.ok) {
+        console.log('🔍 SearchBar API error:', response.status)
         throw new Error('Search failed')
       }
 
       const data = await response.json()
+      console.log('🔍 SearchBar results:', { count: data.results?.length, results: data.results })
       setResults(data.results || [])
       setShowResults(true)
       onSearchResults?.(data.results || [])
