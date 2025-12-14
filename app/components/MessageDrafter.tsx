@@ -1,17 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { NoteAnalysis } from '@/lib/types'
+import { NoteAnalysis, DraftMessage } from '@/lib/types'
 
 interface MessageDrafterProps {
-  messages: NoteAnalysis['messagesToDraft']
+  messages: NoteAnalysis['draftMessages']
   className?: string
-}
-
-interface DraftMessage {
-  recipient: string
-  subject: string
-  body: string
 }
 
 export default function MessageDrafter({ messages = [], className = '' }: MessageDrafterProps) {

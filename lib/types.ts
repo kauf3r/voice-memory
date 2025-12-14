@@ -107,12 +107,67 @@ export interface RetryRequest {
   batchSize?: number
 }
 
-// Domain types for BIB categorization
-export type BIBDomain = 'WORK' | 'PERS' | 'PROJ' | 'IDEA'
+// Domain types for task categorization
+export type TaskDomain = 'WORK' | 'PERS' | 'PROJ'
+export type TaskUrgency = 'NOW' | 'SOON' | 'LATER'
+export type Mood = 'positive' | 'neutral' | 'negative'
+
+// Simplified task structure optimized for Trello/ADHD workflows
+export interface AnalysisTask {
+  title: string           // Short, actionable task title
+  urgency: TaskUrgency    // NOW/SOON/LATER for ADHD-friendly prioritization
+  domain: TaskDomain      // WORK/PERS/PROJ categorization
+  dueDate?: string        // If a due date was mentioned
+  assignedTo?: string     // If delegated to someone else
+  context?: string        // Brief context from the recording
+}
+
+// Person mentioned in recording
+export interface MentionedPerson {
+  name: string
+  context: string
+  relationship?: string
+}
+
+// Draft message ready to send
+export interface DraftMessage {
+  recipient: string
+  subject: string
+  body: string
+}
+
+// Simplified NoteAnalysis - 6 focused categories instead of 17
+export interface NoteAnalysis {
+  // One-line summary of the recording
+  summary: string
+
+  // Quick mood indicator
+  mood: Mood
+
+  // Primary topic for quick reference
+  topic: string
+
+  // The single most important thing mentioned (ADHD-friendly)
+  theOneThing: string | null
+
+  // Tasks extracted with urgency and domain
+  tasks: AnalysisTask[]
+
+  // Draft messages ready to send
+  draftMessages: DraftMessage[]
+
+  // People mentioned for relationship tracking
+  people: MentionedPerson[]
+
+  // Recording timestamp
+  recordedAt: string
+}
+
+// Legacy type aliases for backward compatibility during migration
+export type BIBDomain = TaskDomain | 'IDEA'
 export type BlockerSeverity = 'critical' | 'moderate' | 'minor'
 export type TimeSensitivity = 'urgent' | 'soon' | 'someday'
 
-// BIB Framework types
 export interface TheOneThing {
   description: string
   domain: BIBDomain
@@ -138,78 +193,7 @@ export interface SOPCandidate {
   processDescription: string
   suggestedTitle: string
   domain: BIBDomain
-  confidence: number // 0.0 - 1.0
-}
-
-export interface NoteAnalysis {
-  sentiment: {
-    classification: 'Positive' | 'Neutral' | 'Negative'
-    explanation: string
-  }
-  focusTopics: {
-    primary: string
-    minor: [string, string]
-  }
-  tasks: {
-    myTasks: string[]
-    delegatedTasks: Array<{
-      task: string
-      assignedTo: string
-      nextSteps: string
-    }>
-  }
-  keyIdeas: string[]
-  messagesToDraft: Array<{
-    recipient: string
-    subject: string
-    body: string
-  }>
-  crossReferences: {
-    relatedNotes: string[]
-    projectKnowledgeUpdates: string[]
-  }
-  outreachIdeas: Array<{
-    contact: string
-    topic: string
-    purpose: string
-  }>
-  // BIB Framework fields
-  theOneThing?: TheOneThing | null
-  blockers?: Blocker[]
-  opportunities?: Opportunity[]
-  sopCandidates?: SOPCandidate[]
-  structuredData: {
-    dates: Array<{
-      date: string
-      context: string
-      type: 'past' | 'future' | 'deadline' | 'meeting' | 'event'
-    }>
-    times: Array<{
-      time: string
-      context: string
-      type: 'arrival' | 'departure' | 'meeting' | 'deadline' | 'general'
-    }>
-    locations: Array<{
-      place: string
-      context: string
-      type: 'destination' | 'origin' | 'meeting_place' | 'reference'
-    }>
-    numbers: Array<{
-      value: string
-      context: string
-      type: 'quantity' | 'measurement' | 'price' | 'duration' | 'identifier'
-    }>
-    people: Array<{
-      name: string
-      context: string
-      relationship?: string
-    }>
-  }
-  recordingContext: {
-    recordedAt: string
-    extractedDate?: string
-    timeReferences: string[]
-  }
+  confidence: number
 }
 
 export interface ProjectKnowledge {

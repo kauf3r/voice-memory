@@ -50,9 +50,10 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
   const {
     formatDuration,
     quickStats,
-    primaryTopic,
-    minorTopics,
-    sentiment,
+    topic,
+    mood,
+    summary,
+    theOneThing,
     hasFullAnalysis,
   } = useNoteContent(note)
 
@@ -66,8 +67,8 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
         statusIcon={getStatusIcon()}
         statusText={getStatusText()}
         statusColorClasses={getStatusColor()}
-        sentiment={sentiment}
-        sentimentColorClasses={sentiment ? getSentimentColor(sentiment.classification) : ''}
+        mood={mood}
+        moodColorClasses={mood ? getSentimentColor(mood) : ''}
         processingAttempts={processingAttempts}
         isProcessing={isProcessing || isProcessingNow}
         hasError={hasError}
@@ -96,10 +97,10 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
       )}
 
       {/* Primary Topic - only show for unprocessed notes (AnalysisView shows topics for processed) */}
-      {primaryTopic && !note.analysis && (
+      {topic && !note.analysis && (
         <NoteTopic
-          primaryTopic={primaryTopic}
-          minorTopics={minorTopics}
+          primaryTopic={topic}
+          minorTopics={[]}
         />
       )}
 

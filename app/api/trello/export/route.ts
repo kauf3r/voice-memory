@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Aggregate tasks from notes (same logic as knowledge API)
+ * Aggregate tasks from notes - handles both new and legacy analysis formats
  */
 function aggregateTasksFromNotes(notes: any[]): VoiceMemoryTask[] {
   const allTasks: VoiceMemoryTask[] = []
@@ -152,48 +152,63 @@ function aggregateTasksFromNotes(notes: any[]): VoiceMemoryTask[] {
       const analysis = note.analysis
       if (!analysis) continue
 
-      // Process myTasks
-      if (analysis.tasks?.myTasks) {
-        analysis.tasks.myTasks.forEach((task: string | object, index: number) => {
-          // Handle both string and object tasks
-          const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
-          const taskDetails = typeof task === 'object' ? task as any : null
-          
+      // NEW FORMAT: Array of AnalysisTask objects with urgency/domain
+      if (Array.isArray(analysis.tasks)) {
+        analysis.tasks.forEach((task: any, index: number) => {
           allTasks.push({
-            id: `${note.id}-my-${index}`,
-            description: taskDescription,
-            type: 'myTasks',
+            id: `${note.id}-task-${index}`,
+            description: task.title || task.description || 'Unknown task',
+            type: task.assignedTo ? 'delegatedTasks' : 'myTasks',
             date: note.recorded_at,
             noteId: note.id,
-            noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
-            nextSteps: taskDetails?.nextSteps,
-            assignedTo: taskDetails?.assignedTo
+            noteContext: task.context || analysis.summary || note.transcription?.substring(0, 100) || 'No context',
+            nextSteps: undefined,
+            assignedTo: task.assignedTo
           })
         })
       }
+      // LEGACY FORMAT: { myTasks: string[], delegatedTasks: object[] }
+      else if (analysis.tasks?.myTasks || analysis.tasks?.delegatedTasks) {
+        // Process myTasks
+        if (analysis.tasks?.myTasks) {
+          analysis.tasks.myTasks.forEach((task: string | object, index: number) => {
+            const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
+            const taskDetails = typeof task === 'object' ? task as any : null
 
-      // Process delegatedTasks
-      if (analysis.tasks?.delegatedTasks) {
-        analysis.tasks.delegatedTasks.forEach((task: string | object, index: number) => {
-          // Handle both string and object tasks
-          const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
-          const taskDetails = typeof task === 'object' ? task as any : null
-          
-          allTasks.push({
-            id: `${note.id}-delegated-${index}`,
-            description: taskDescription,
-            type: 'delegatedTasks',
-            date: note.recorded_at,
-            noteId: note.id,
-            noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context available',
-            nextSteps: taskDetails?.nextSteps,
-            assignedTo: taskDetails?.assignedTo
+            allTasks.push({
+              id: `${note.id}-my-${index}`,
+              description: taskDescription,
+              type: 'myTasks',
+              date: note.recorded_at,
+              noteId: note.id,
+              noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context',
+              nextSteps: taskDetails?.nextSteps,
+              assignedTo: taskDetails?.assignedTo
+            })
           })
-        })
+        }
+
+        // Process delegatedTasks
+        if (analysis.tasks?.delegatedTasks) {
+          analysis.tasks.delegatedTasks.forEach((task: string | object, index: number) => {
+            const taskDescription = typeof task === 'string' ? task : (task as any).task || 'Unknown task'
+            const taskDetails = typeof task === 'object' ? task as any : null
+
+            allTasks.push({
+              id: `${note.id}-delegated-${index}`,
+              description: taskDescription,
+              type: 'delegatedTasks',
+              date: note.recorded_at,
+              noteId: note.id,
+              noteContext: analysis.keyIdeas?.[0] || note.transcription?.substring(0, 100) || 'No context',
+              nextSteps: taskDetails?.nextSteps,
+              assignedTo: taskDetails?.assignedTo
+            })
+          })
+        }
       }
     } catch (noteError) {
       console.error('❌ Error processing note:', note.id, noteError)
-      // Continue with next note instead of failing completely
       continue
     }
   }

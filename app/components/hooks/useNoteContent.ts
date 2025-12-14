@@ -6,42 +6,44 @@ import { Note } from '@/lib/types'
 export function useNoteContent(note: Note) {
   const formatDuration = (seconds?: number): string => {
     if (!seconds) return 'Unknown duration'
-    
+
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
-    
+
     if (minutes === 0) {
       return `${remainingSeconds}s`
     }
-    
+
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }
 
   const quickStats = useMemo(() => {
     if (!note.analysis) {
-      return { myTasks: 0, keyIdeas: 0, messages: 0 }
+      return { tasks: 0, nowTasks: 0, messages: 0 }
     }
 
     const analysis = note.analysis
-    const myTasks = analysis.tasks?.myTasks?.length || 0
-    const keyIdeas = analysis.keyIdeas?.length || 0
-    const messages = analysis.messagesToDraft?.length || 0
+    const tasks = analysis.tasks?.length || 0
+    const nowTasks = analysis.tasks?.filter(t => t.urgency === 'NOW').length || 0
+    const messages = analysis.draftMessages?.length || 0
 
-    return { myTasks, keyIdeas, messages }
+    return { tasks, nowTasks, messages }
   }, [note.analysis])
 
-  const primaryTopic = useMemo(() => {
-    if (!note.analysis?.focusTopics?.primary) return null
-    return note.analysis.focusTopics.primary
+  const topic = useMemo(() => {
+    return note.analysis?.topic || null
   }, [note.analysis])
 
-  const minorTopics = useMemo(() => {
-    if (!note.analysis?.focusTopics?.minor) return []
-    return note.analysis.focusTopics.minor
+  const mood = useMemo(() => {
+    return note.analysis?.mood || null
   }, [note.analysis])
 
-  const sentiment = useMemo(() => {
-    return note.analysis?.sentiment || null
+  const summary = useMemo(() => {
+    return note.analysis?.summary || null
+  }, [note.analysis])
+
+  const theOneThing = useMemo(() => {
+    return note.analysis?.theOneThing || null
   }, [note.analysis])
 
   const hasFullAnalysis = useMemo(() => {
@@ -51,9 +53,10 @@ export function useNoteContent(note: Note) {
   return {
     formatDuration,
     quickStats,
-    primaryTopic,
-    minorTopics,
-    sentiment,
+    topic,
+    mood,
+    summary,
+    theOneThing,
     hasFullAnalysis
   }
 }

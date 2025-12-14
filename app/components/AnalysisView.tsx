@@ -1,12 +1,8 @@
 'use client'
 
-import { NoteAnalysis } from '@/lib/types'
+import { NoteAnalysis, AnalysisTask } from '@/lib/types'
 import { useState } from 'react'
 import MessageDrafter from './MessageDrafter'
-import { Response } from '@/components/ai-elements/response'
-import { InlineCitation, InlineCitationText, InlineCitationCard, InlineCitationCardTrigger, InlineCitationCardBody, InlineCitationSource } from '@/components/ai-elements/inline-citation'
-import { Task, TaskTrigger, TaskContent, TaskItem } from '@/components/ai-elements/task'
-import { Actions, Action } from '@/components/ai-elements/actions'
 
 interface AnalysisViewProps {
   analysis: NoteAnalysis
@@ -15,112 +11,168 @@ interface AnalysisViewProps {
   className?: string
 }
 
-export default function AnalysisView({ 
-  analysis, 
-  transcription, 
-  audioUrl, 
-  className = '' 
+export default function AnalysisView({
+  analysis,
+  transcription,
+  audioUrl,
+  className = ''
 }: AnalysisViewProps) {
   const [activeSection, setActiveSection] = useState<string>('overview')
 
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment.toLowerCase()) {
-      case 'positive':
-        return 'bg-green-100 text-green-800 border-green-200'
-      case 'negative':
-        return 'bg-red-100 text-red-800 border-red-200'
-      case 'neutral':
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200'
+  const getMoodEmoji = (mood: string) => {
+    switch (mood?.toLowerCase()) {
+      case 'positive': return '😊'
+      case 'negative': return '😔'
+      default: return '😐'
     }
+  }
+
+  const getMoodColor = (mood: string) => {
+    switch (mood?.toLowerCase()) {
+      case 'positive': return 'bg-green-100 text-green-800 border-green-200'
+      case 'negative': return 'bg-red-100 text-red-800 border-red-200'
+      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+    }
+  }
+
+  const getUrgencyColor = (urgency: string) => {
+    switch (urgency) {
+      case 'NOW': return 'bg-red-100 text-red-800 border-red-300'
+      case 'SOON': return 'bg-yellow-100 text-yellow-800 border-yellow-300'
+      case 'LATER': return 'bg-blue-100 text-blue-800 border-blue-300'
+      default: return 'bg-gray-100 text-gray-800 border-gray-300'
+    }
+  }
+
+  const getDomainColor = (domain: string) => {
+    switch (domain) {
+      case 'WORK': return 'bg-purple-100 text-purple-700'
+      case 'PERS': return 'bg-pink-100 text-pink-700'
+      case 'PROJ': return 'bg-indigo-100 text-indigo-700'
+      default: return 'bg-gray-100 text-gray-700'
+    }
+  }
+
+  // Group tasks by urgency for display
+  const tasksByUrgency = {
+    NOW: analysis.tasks?.filter(t => t.urgency === 'NOW') || [],
+    SOON: analysis.tasks?.filter(t => t.urgency === 'SOON') || [],
+    LATER: analysis.tasks?.filter(t => t.urgency === 'LATER') || []
   }
 
   const sections = [
     { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'sentiment', label: 'Sentiment', icon: '💭' },
-    { id: 'topics', label: 'Topics', icon: '🏷️' },
-    { id: 'tasks', label: 'Tasks', icon: '✅' },
-    { id: 'ideas', label: 'Key Ideas', icon: '💡' },
-    { id: 'messages', label: 'Messages', icon: '✉️' },
-    { id: 'outreach', label: 'Outreach', icon: '🤝' },
-    { id: 'references', label: 'References', icon: '🔗' },
+    { id: 'tasks', label: 'Tasks', icon: '✅', count: analysis.tasks?.length || 0 },
+    { id: 'messages', label: 'Messages', icon: '✉️', count: analysis.draftMessages?.length || 0 },
+    { id: 'people', label: 'People', icon: '👥', count: analysis.people?.length || 0 },
   ]
+
+  const renderTaskCard = (task: AnalysisTask, index: number) => (
+    <div
+      key={index}
+      className={`rounded-lg p-4 border-2 ${getUrgencyColor(task.urgency)}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`px-2 py-0.5 rounded text-xs font-bold ${getUrgencyColor(task.urgency)}`}>
+              {task.urgency}
+            </span>
+            <span className={`px-2 py-0.5 rounded text-xs ${getDomainColor(task.domain)}`}>
+              {task.domain}
+            </span>
+            {task.assignedTo && (
+              <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-700">
+                → {task.assignedTo}
+              </span>
+            )}
+          </div>
+          <p className="font-medium text-gray-900">{task.title}</p>
+          {task.context && (
+            <p className="text-sm text-gray-600 mt-1">{task.context}</p>
+          )}
+          {task.dueDate && (
+            <p className="text-sm text-gray-500 mt-1">📅 {task.dueDate}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 
   const renderOverview = () => (
     <div className="space-y-6">
-      {/* Quick Stats */}
+      {/* Summary */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+        <p className="text-gray-800 text-lg">{analysis.summary || 'No summary available'}</p>
+      </div>
+
+      {/* Quick Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-blue-50 rounded-lg p-4 text-center">
-          <div className="text-2xl font-bold text-blue-600">
-            {analysis.tasks?.myTasks?.length || 0}
-          </div>
-          <div className="text-sm text-blue-600">My Tasks</div>
+        {/* Mood */}
+        <div className={`rounded-lg p-4 text-center border ${getMoodColor(analysis.mood)}`}>
+          <div className="text-2xl mb-1">{getMoodEmoji(analysis.mood)}</div>
+          <div className="text-sm font-medium capitalize">{analysis.mood || 'neutral'}</div>
         </div>
-        <div className="bg-green-50 rounded-lg p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">
-            {analysis.keyIdeas?.length || 0}
-          </div>
-          <div className="text-sm text-green-600">Key Ideas</div>
+
+        {/* Topic */}
+        <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
+          <div className="text-2xl mb-1">🎯</div>
+          <div className="text-sm font-medium text-blue-800">{analysis.topic || 'General'}</div>
         </div>
-        <div className="bg-purple-50 rounded-lg p-4 text-center">
-          <div className="text-2xl font-bold text-purple-600">
-            {analysis.messagesToDraft?.length || 0}
-          </div>
-          <div className="text-sm text-purple-600">Messages</div>
+
+        {/* Tasks Count */}
+        <div className="bg-purple-50 rounded-lg p-4 text-center border border-purple-200">
+          <div className="text-2xl font-bold text-purple-600">{analysis.tasks?.length || 0}</div>
+          <div className="text-sm text-purple-600">Tasks</div>
         </div>
-        <div className="bg-orange-50 rounded-lg p-4 text-center">
-          <div className="text-2xl font-bold text-orange-600">
-            {analysis.outreachIdeas?.length || 0}
-          </div>
-          <div className="text-sm text-orange-600">Outreach</div>
+
+        {/* Messages Count */}
+        <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
+          <div className="text-2xl font-bold text-green-600">{analysis.draftMessages?.length || 0}</div>
+          <div className="text-sm text-green-600">Messages</div>
         </div>
       </div>
 
-      {/* Primary Topic & Sentiment */}
-      <div className="grid md:grid-cols-2 gap-6">
+      {/* The One Thing - Hero Section */}
+      {analysis.theOneThing && (
+        <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg p-6 border-2 border-yellow-300">
+          <div className="flex items-start gap-3">
+            <span className="text-3xl">⭐</span>
+            <div>
+              <h3 className="text-sm font-semibold text-yellow-800 uppercase tracking-wide mb-1">
+                The One Thing
+              </h3>
+              <p className="text-xl font-medium text-yellow-900">
+                {analysis.theOneThing}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOW Tasks Preview */}
+      {tasksByUrgency.NOW.length > 0 && (
         <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">Primary Focus</h3>
-          <div className="bg-blue-50 rounded-lg p-4">
-            <h4 className="font-semibold text-blue-900 text-xl">
-              {analysis.focusTopics?.primary || 'No primary topic identified'}
-            </h4>
-            {analysis.focusTopics?.minor && (
-              <div className="flex gap-2 mt-2">
-                {analysis.focusTopics.minor.map((topic, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800"
-                  >
-                    {topic}
-                  </span>
-                ))}
-              </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-3 flex items-center gap-2">
+            <span className="text-red-500">🔥</span> Do Now ({tasksByUrgency.NOW.length})
+          </h3>
+          <div className="space-y-3">
+            {tasksByUrgency.NOW.slice(0, 3).map((task, index) => renderTaskCard(task, index))}
+            {tasksByUrgency.NOW.length > 3 && (
+              <button
+                onClick={() => setActiveSection('tasks')}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                +{tasksByUrgency.NOW.length - 3} more NOW tasks →
+              </button>
             )}
           </div>
         </div>
-
-        <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">Sentiment</h3>
-          <div className={`rounded-lg p-4 border ${getSentimentColor(analysis.sentiment?.classification || 'neutral')}`}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">
-                {analysis.sentiment?.classification === 'Positive' ? '😊' : 
-                 analysis.sentiment?.classification === 'Negative' ? '😔' : '😐'}
-              </span>
-              <span className="font-semibold">
-                {analysis.sentiment?.classification || 'Neutral'}
-              </span>
-            </div>
-            <p className="text-sm opacity-80">
-              {analysis.sentiment?.explanation || 'No sentiment analysis available'}
-            </p>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Audio & Transcription */}
       {(audioUrl || transcription) && (
-        <div className="space-y-4">
+        <div className="space-y-4 pt-4 border-t">
           {audioUrl && (
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-3">Audio Recording</h3>
@@ -146,110 +198,46 @@ export default function AnalysisView({
     </div>
   )
 
-  const renderSentiment = () => (
-    <div className="space-y-4">
-      <div className={`rounded-lg p-6 border-2 ${getSentimentColor(analysis.sentiment?.classification || 'neutral')}`}>
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-3xl">
-            {analysis.sentiment?.classification === 'Positive' ? '😊' : 
-             analysis.sentiment?.classification === 'Negative' ? '😔' : '😐'}
-          </span>
-          <div>
-            <h3 className="text-xl font-semibold">
-              {analysis.sentiment?.classification || 'Neutral'}
-            </h3>
-            <p className="text-sm opacity-75">Emotional tone of the recording</p>
-          </div>
-        </div>
-        <Response className="text-base">
-          {analysis.sentiment?.explanation || 'No detailed sentiment analysis available.'}
-        </Response>
-      </div>
-    </div>
-  )
-
-  const renderTopics = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-3">Primary Topic</h3>
-        <div className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-400">
-          <h4 className="font-semibold text-blue-900 text-lg">
-            {analysis.focusTopics?.primary || 'No primary topic identified'}
-          </h4>
-        </div>
-      </div>
-
-      {analysis.focusTopics?.minor && analysis.focusTopics.minor.length > 0 && (
-        <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">Related Topics</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            {analysis.focusTopics.minor.map((topic, index) => (
-              <div key={index} className="bg-gray-50 rounded-lg p-4 border-l-4 border-gray-400">
-                <h4 className="font-medium text-gray-800">{topic}</h4>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
   const renderTasks = () => (
     <div className="space-y-6">
-      {analysis.tasks?.myTasks && analysis.tasks.myTasks.length > 0 && (
+      {/* NOW Section */}
+      {tasksByUrgency.NOW.length > 0 && (
         <div>
-          <Task defaultOpen={true}>
-            <TaskTrigger title={`My Tasks (${analysis.tasks.myTasks.length})`} />
-            <TaskContent>
-              {analysis.tasks.myTasks.map((task, index) => (
-                <div key={index} className="flex items-start justify-between gap-3 bg-blue-50 rounded-lg p-3">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="w-5 h-5 rounded border-2 border-blue-300 mt-0.5 flex-shrink-0" />
-                    <TaskItem className="text-blue-900 flex-1">{task}</TaskItem>
-                  </div>
-                  <Actions>
-                    <Action tooltip="Mark as complete">
-                      ✓
-                    </Action>
-                    <Action tooltip="Pin task">
-                      📌
-                    </Action>
-                    <Action tooltip="Set reminder">
-                      ⏰
-                    </Action>
-                  </Actions>
-                </div>
-              ))}
-            </TaskContent>
-          </Task>
-        </div>
-      )}
-
-      {analysis.tasks?.delegatedTasks && analysis.tasks.delegatedTasks.length > 0 && (
-        <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">Delegated Tasks</h3>
-          <div className="space-y-4">
-            {analysis.tasks.delegatedTasks.map((task, index) => (
-              <div key={index} className="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-400">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-medium text-orange-900">Assigned to:</span>
-                  <span className="bg-orange-200 text-orange-800 px-2 py-1 rounded text-sm">
-                    {task.assignedTo}
-                  </span>
-                </div>
-                <p className="text-orange-900 mb-2">{task.task}</p>
-                {task.nextSteps && (
-                  <p className="text-sm text-orange-700">
-                    <span className="font-medium">Next steps:</span> {task.nextSteps}
-                  </p>
-                )}
-              </div>
-            ))}
+          <h3 className="text-lg font-semibold text-red-700 mb-3 flex items-center gap-2">
+            <span>🔥</span> NOW - Do Today ({tasksByUrgency.NOW.length})
+          </h3>
+          <div className="space-y-3">
+            {tasksByUrgency.NOW.map((task, index) => renderTaskCard(task, index))}
           </div>
         </div>
       )}
 
-      {(!analysis.tasks?.myTasks?.length && !analysis.tasks?.delegatedTasks?.length) && (
+      {/* SOON Section */}
+      {tasksByUrgency.SOON.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold text-yellow-700 mb-3 flex items-center gap-2">
+            <span>📅</span> SOON - This Week ({tasksByUrgency.SOON.length})
+          </h3>
+          <div className="space-y-3">
+            {tasksByUrgency.SOON.map((task, index) => renderTaskCard(task, index))}
+          </div>
+        </div>
+      )}
+
+      {/* LATER Section */}
+      {tasksByUrgency.LATER.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold text-blue-700 mb-3 flex items-center gap-2">
+            <span>📋</span> LATER - Someday ({tasksByUrgency.LATER.length})
+          </h3>
+          <div className="space-y-3">
+            {tasksByUrgency.LATER.map((task, index) => renderTaskCard(task, index))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!analysis.tasks?.length && (
         <div className="text-center py-8 text-gray-500">
           <p>No tasks identified in this recording.</p>
         </div>
@@ -257,43 +245,28 @@ export default function AnalysisView({
     </div>
   )
 
-  const renderIdeas = () => (
-    <div className="space-y-4">
-      {analysis.keyIdeas && analysis.keyIdeas.length > 0 ? (
-        <div className="space-y-3">
-          {analysis.keyIdeas.map((idea, index) => (
-            <div key={index} className="bg-yellow-50 rounded-lg p-4 border-l-4 border-yellow-400">
-              <div className="flex items-start gap-3">
-                <span className="text-yellow-500 text-xl">💡</span>
-                <p className="text-yellow-900">{idea}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-8 text-gray-500">
-          <p>No key ideas identified in this recording.</p>
-        </div>
-      )}
-    </div>
-  )
-
   const renderMessages = () => (
-    <MessageDrafter messages={analysis.messagesToDraft} />
+    <MessageDrafter messages={analysis.draftMessages} />
   )
 
-  const renderOutreach = () => (
+  const renderPeople = () => (
     <div className="space-y-4">
-      {analysis.outreachIdeas && analysis.outreachIdeas.length > 0 ? (
-        <div className="space-y-3">
-          {analysis.outreachIdeas.map((idea, index) => (
-            <div key={index} className="bg-green-50 rounded-lg p-4 border border-green-200">
+      {analysis.people && analysis.people.length > 0 ? (
+        <div className="grid md:grid-cols-2 gap-4">
+          {analysis.people.map((person, index) => (
+            <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
               <div className="flex items-start gap-3">
-                <span className="text-green-500 text-xl">🤝</span>
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
+                  {person.name.charAt(0).toUpperCase()}
+                </div>
                 <div className="flex-1">
-                  <h4 className="font-medium text-green-900 mb-1">{idea.contact}</h4>
-                  <p className="text-green-800 mb-2">{idea.topic}</p>
-                  <p className="text-sm text-green-700">{idea.purpose}</p>
+                  <h4 className="font-medium text-gray-900">{person.name}</h4>
+                  {person.relationship && (
+                    <span className="inline-block px-2 py-0.5 rounded text-xs bg-gray-200 text-gray-600 mt-1">
+                      {person.relationship}
+                    </span>
+                  )}
+                  <p className="text-sm text-gray-600 mt-2">{person.context}</p>
                 </div>
               </div>
             </div>
@@ -301,59 +274,7 @@ export default function AnalysisView({
         </div>
       ) : (
         <div className="text-center py-8 text-gray-500">
-          <p>No outreach opportunities identified.</p>
-        </div>
-      )}
-    </div>
-  )
-
-  const renderReferences = () => (
-    <div className="space-y-6">
-      {analysis.crossReferences?.relatedNotes && analysis.crossReferences.relatedNotes.length > 0 && (
-        <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">Related Notes</h3>
-          <div className="space-y-2">
-            {analysis.crossReferences.relatedNotes.map((note, index) => (
-              <div key={index} className="bg-blue-50 rounded-lg p-3 border-l-4 border-blue-400">
-                <InlineCitation>
-                  <InlineCitationText className="text-blue-900">
-                    {note}
-                  </InlineCitationText>
-                  <InlineCitationCard>
-                    <InlineCitationCardTrigger sources={['voice-memory://related-note']} />
-                    <InlineCitationCardBody>
-                      <InlineCitationSource 
-                        title="Related Voice Note"
-                        description={`Connection identified by AI analysis: "${note.substring(0, 100)}${note.length > 100 ? '...' : ''}"`}
-                        url="voice-memory://cross-reference"
-                      />
-                    </InlineCitationCardBody>
-                  </InlineCitationCard>
-                </InlineCitation>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {analysis.crossReferences?.projectKnowledgeUpdates && analysis.crossReferences.projectKnowledgeUpdates.length > 0 && (
-        <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-3">Knowledge Updates</h3>
-          <div className="space-y-2">
-            {analysis.crossReferences.projectKnowledgeUpdates.map((update, index) => (
-              <div key={index} className="bg-gray-50 rounded-lg p-3 border-l-4 border-gray-400">
-                <Response className="text-gray-900">
-                  {update}
-                </Response>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(!analysis.crossReferences?.relatedNotes?.length && !analysis.crossReferences?.projectKnowledgeUpdates?.length) && (
-        <div className="text-center py-8 text-gray-500">
-          <p>No cross-references identified.</p>
+          <p>No people mentioned in this recording.</p>
         </div>
       )}
     </div>
@@ -361,13 +282,9 @@ export default function AnalysisView({
 
   const renderContent = () => {
     switch (activeSection) {
-      case 'sentiment': return renderSentiment()
-      case 'topics': return renderTopics()
       case 'tasks': return renderTasks()
-      case 'ideas': return renderIdeas()
       case 'messages': return renderMessages()
-      case 'outreach': return renderOutreach()
-      case 'references': return renderReferences()
+      case 'people': return renderPeople()
       default: return renderOverview()
     }
   }
@@ -391,6 +308,11 @@ export default function AnalysisView({
             >
               <span className="text-base">{section.icon}</span>
               <span className="whitespace-nowrap">{section.label}</span>
+              {section.count !== undefined && section.count > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs bg-gray-200 text-gray-600">
+                  {section.count}
+                </span>
+              )}
             </button>
           ))}
         </nav>
