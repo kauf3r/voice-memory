@@ -81,6 +81,11 @@ export async function POST(request: NextRequest) {
       if (body.filePath) {
         console.log('Creating note for uploaded file:', body.filePath)
         const supabase = createServiceClient()
+        const shortcutUserId = process.env.SHORTCUT_USER_ID
+
+        if (!shortcutUserId) {
+          return NextResponse.json({ error: 'User not configured' }, { status: 500 })
+        }
 
         // Get the public URL for the uploaded file
         const { data: urlData } = supabase.storage
@@ -93,7 +98,7 @@ export async function POST(request: NextRequest) {
         const { data: note, error: dbError } = await supabase
           .from('notes')
           .insert({
-            user_id: userId,
+            user_id: shortcutUserId,
             audio_url: audioUrl,
             duration_seconds: body.duration || 0,
             recorded_at: new Date().toISOString(),
