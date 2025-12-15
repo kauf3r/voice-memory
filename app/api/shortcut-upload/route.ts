@@ -129,7 +129,8 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Service-Auth': process.env.SUPABASE_SERVICE_KEY || ''
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+          'X-Service-Auth': 'true'
         },
         body: JSON.stringify({
           noteId: note.id,
