@@ -298,9 +298,19 @@ export async function POST(request: NextRequest) {
     
     // Check for service key authentication (for admin operations)
     const serviceAuthHeader = request.headers.get('X-Service-Auth')
-    const isServiceAuth = serviceAuthHeader === 'true' && 
-                         authHeader?.includes(process.env.SUPABASE_SERVICE_KEY || '')
-    
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
+    const isServiceAuth = serviceAuthHeader === 'true' &&
+                         Boolean(serviceKey) &&
+                         token === serviceKey
+
+    console.log('🔐 Service auth check:', {
+      hasServiceHeader: serviceAuthHeader === 'true',
+      hasServiceKey: Boolean(serviceKey),
+      tokenMatch: token === serviceKey,
+      isServiceAuth
+    })
+
     if (!user && !isServiceAuth) {
       return createErrorResponse(new Error('Unauthorized'))
     }
