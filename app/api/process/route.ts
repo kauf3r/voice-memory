@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { createServerClient, createServiceClient } from '@/lib/supabase-server'
 import { processingService } from '@/lib/processing/ProcessingService'
 import { quotaManager } from '@/lib/quota-manager'
 import type { ErrorResponse, ErrorType, UsageInfo, RateLimitInfo } from '@/lib/types/api'
@@ -252,51 +252,8 @@ export async function POST(request: NextRequest) {
   })
   
   try {
-    console.log('🔧 Creating Supabase client...')
-    const supabase = await createServerClient()
-    
-    // Try to get user from Authorization header first
-    console.log('🔑 Authenticating user...')
-    let user = null
-    let authError = null
-    
+    // Check for service key authentication first (for admin operations)
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    console.log('📋 Auth header status:', authHeader ? 'PRESENT' : 'MISSING')
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      console.log('🎫 Using Bearer token authentication')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (error) {
-        console.error('❌ Bearer token authentication failed:', error)
-        authError = error
-      } else {
-        user = data?.user
-        console.log('✅ Bearer token authentication successful:', { userId: user?.id })
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
-      }
-    }
-    
-    // If no auth header or it failed, try to get from cookies
-    if (!user) {
-      console.log('🍪 Trying cookie authentication...')
-      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
-      user = cookieUser
-      authError = error
-      
-      if (user) {
-        console.log('✅ Cookie authentication successful:', { userId: user.id })
-      } else {
-        console.error('❌ Cookie authentication failed:', error)
-      }
-    }
-    
-    // Check for service key authentication (for admin operations)
     const serviceAuthHeader = request.headers.get('X-Service-Auth')
     const serviceKey = process.env.SUPABASE_SERVICE_KEY
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
@@ -310,6 +267,48 @@ export async function POST(request: NextRequest) {
       tokenMatch: token === serviceKey,
       isServiceAuth
     })
+
+    // Use service client for service auth (bypasses RLS), otherwise use regular client
+    console.log('🔧 Creating Supabase client...')
+    const supabase = isServiceAuth ? createServiceClient() : await createServerClient()
+
+    // Try to get user from Authorization header first
+    console.log('🔑 Authenticating user...')
+    let user = null
+    let authError = null
+    console.log('📋 Auth header status:', authHeader ? 'PRESENT' : 'MISSING')
+
+    if (!isServiceAuth && authHeader && authHeader.startsWith('Bearer ')) {
+      console.log('🎫 Using Bearer token authentication')
+      const { data, error } = await supabase.auth.getUser(token!)
+
+      if (error) {
+        console.error('❌ Bearer token authentication failed:', error)
+        authError = error
+      } else {
+        user = data?.user
+        console.log('✅ Bearer token authentication successful:', { userId: user?.id })
+        // Set the session for this request
+        await supabase.auth.setSession({
+          access_token: token!,
+          refresh_token: token!
+        })
+      }
+    }
+
+    // If no auth header or it failed, try to get from cookies
+    if (!isServiceAuth && !user) {
+      console.log('🍪 Trying cookie authentication...')
+      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
+      user = cookieUser
+      authError = error
+
+      if (user) {
+        console.log('✅ Cookie authentication successful:', { userId: user.id })
+      } else {
+        console.error('❌ Cookie authentication failed:', error)
+      }
+    }
 
     if (!user && !isServiceAuth) {
       return createErrorResponse(new Error('Unauthorized'))
