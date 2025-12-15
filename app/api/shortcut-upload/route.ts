@@ -7,6 +7,45 @@ import { uploadAudioFile } from '@/lib/storage'
 
 const SHORTCUT_API_KEY = process.env.SHORTCUT_API_KEY
 
+// GET: Returns a presigned upload URL for direct upload to Supabase
+export async function GET(request: NextRequest) {
+  console.log('Shortcut upload GET - generating upload URL')
+
+  if (!SHORTCUT_API_KEY) {
+    return NextResponse.json({ error: 'Not configured' }, { status: 500 })
+  }
+
+  const apiKey = request.headers.get('X-API-Key') || request.headers.get('x-api-key')
+  if (!apiKey || apiKey !== SHORTCUT_API_KEY) {
+    return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
+  }
+
+  const userId = process.env.SHORTCUT_USER_ID
+  if (!userId) {
+    return NextResponse.json({ error: 'User not configured' }, { status: 500 })
+  }
+
+  const supabase = createServiceClient()
+  const timestamp = Date.now()
+  const filePath = `${userId}/${timestamp}.m4a`
+
+  // Create signed upload URL (valid for 5 minutes)
+  const { data, error } = await supabase.storage
+    .from('audio-files')
+    .createSignedUploadUrl(filePath)
+
+  if (error) {
+    console.error('Failed to create upload URL:', error)
+    return NextResponse.json({ error: 'Failed to create upload URL' }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    uploadUrl: data.signedUrl,
+    filePath: filePath,
+    token: data.token
+  })
+}
+
 export async function POST(request: NextRequest) {
   console.log('Shortcut upload API called')
 
@@ -34,15 +73,69 @@ export async function POST(request: NextRequest) {
     let file: File | null = null
     const contentType = request.headers.get('content-type') || ''
 
-    // Support both form data and JSON with base64
+    // Support form data, JSON with base64, or JSON with filePath (after direct upload)
     if (contentType.includes('application/json')) {
-      // JSON body with base64 encoded audio
       const body = await request.json()
+
+      // Option 1: filePath provided (after direct upload to Supabase)
+      if (body.filePath) {
+        console.log('Creating note for uploaded file:', body.filePath)
+        const supabase = createServiceClient()
+
+        // Get the public URL for the uploaded file
+        const { data: urlData } = supabase.storage
+          .from('audio-files')
+          .getPublicUrl(body.filePath)
+
+        const audioUrl = urlData.publicUrl
+
+        // Create note record directly
+        const { data: note, error: dbError } = await supabase
+          .from('notes')
+          .insert({
+            user_id: userId,
+            audio_url: audioUrl,
+            duration_seconds: body.duration || 0,
+            recorded_at: new Date().toISOString(),
+          })
+          .select()
+          .single()
+
+        if (dbError) {
+          console.error('Database error:', dbError)
+          return NextResponse.json({ error: 'Failed to create note' }, { status: 500 })
+        }
+
+        // Trigger processing
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+          const apiUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`
+          await fetch(`${apiUrl}/api/process`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+              'X-Service-Auth': 'true'
+            },
+            body: JSON.stringify({ noteId: note.id, forceReprocess: false })
+          })
+        } catch (e) {
+          console.warn('Processing trigger failed:', e)
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: 'Voice note uploaded successfully',
+          noteId: note.id
+        })
+      }
+
+      // Option 2: base64 audio in JSON body
       const { audio, filename = 'recording.m4a', mimeType = 'audio/m4a' } = body
 
       if (!audio) {
         return NextResponse.json(
-          { error: 'No audio data provided' },
+          { error: 'No audio data provided. Send either "audio" (base64) or "filePath"' },
           { status: 400 }
         )
       }
