@@ -31,18 +31,47 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Parse form data
-    const formData = await request.formData()
-    const file = formData.get('file') as File
+    let file: File | null = null
+    const contentType = request.headers.get('content-type') || ''
 
-    if (!file) {
+    // Support both form data and JSON with base64
+    if (contentType.includes('application/json')) {
+      // JSON body with base64 encoded audio
+      const body = await request.json()
+      const { audio, filename = 'recording.m4a', mimeType = 'audio/m4a' } = body
+
+      if (!audio) {
+        return NextResponse.json(
+          { error: 'No audio data provided' },
+          { status: 400 }
+        )
+      }
+
+      // Decode base64 to buffer
+      const audioBuffer = Buffer.from(audio, 'base64')
+      file = new File([audioBuffer], filename, { type: mimeType })
+      console.log('Base64 audio received:', filename, `(${(file.size / 1024 / 1024).toFixed(2)}MB)`)
+
+    } else {
+      // Form data upload
+      const formData = await request.formData()
+      file = formData.get('file') as File
+
+      if (!file) {
+        return NextResponse.json(
+          { error: 'No file provided' },
+          { status: 400 }
+        )
+      }
+      console.log('Form file received:', file.name, `(${(file.size / 1024 / 1024).toFixed(2)}MB)`)
+    }
+
+    if (!file || file.size === 0) {
       return NextResponse.json(
-        { error: 'No file provided' },
+        { error: 'Empty file provided' },
         { status: 400 }
       )
     }
-
-    console.log('File received:', file.name, `(${(file.size / 1024 / 1024).toFixed(2)}MB)`)
 
     // Basic validation
     const maxSize = 25 * 1024 * 1024 // 25MB
