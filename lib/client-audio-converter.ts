@@ -1,8 +1,11 @@
 /**
- * Client-side audio conversion using Web Audio API
- * Converts M4A/MP4 audio files to WAV for reliable Whisper API compatibility
- * No external dependencies - uses native browser APIs
+ * Client-side audio conversion using Web Audio API + lamejs
+ * Converts M4A/MP4 audio files to MP3 for reliable Whisper API compatibility
+ * Uses lamejs for MP3 encoding (smaller files than WAV)
  */
+
+// @ts-ignore - lamejs doesn't have types
+import lamejs from 'lamejs'
 
 /**
  * Check if a file needs conversion (M4A/MP4 audio containers)
@@ -22,7 +25,7 @@ export function needsConversion(file: File): boolean {
 }
 
 /**
- * Convert audio file to WAV format using Web Audio API
+ * Convert audio file to MP3 format using Web Audio API + lamejs
  */
 export async function convertToMp3(
   file: File,
@@ -33,8 +36,8 @@ export async function convertToMp3(
     return file
   }
 
-  console.log(`🔄 Converting ${file.name} to WAV using Web Audio API...`)
-  onProgress?.(10)
+  console.log(`🔄 Converting ${file.name} to MP3...`)
+  onProgress?.(5)
 
   try {
     // Check for AudioContext support
@@ -45,17 +48,17 @@ export async function convertToMp3(
     }
 
     const audioContext = new AudioContextClass()
-    onProgress?.(20)
+    onProgress?.(10)
 
     // Read file as ArrayBuffer
     const arrayBuffer = await file.arrayBuffer()
-    onProgress?.(30)
+    onProgress?.(20)
 
     // Decode audio data
     let audioBuffer: AudioBuffer
     try {
       audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-      onProgress?.(50)
+      onProgress?.(35)
     } catch (decodeError) {
       console.warn('⚠️ Failed to decode audio, using original file:', decodeError)
       await audioContext.close()
@@ -73,92 +76,85 @@ export async function convertToMp3(
     source.connect(offlineContext.destination)
     source.start()
 
-    onProgress?.(60)
+    onProgress?.(45)
 
     const resampledBuffer = await offlineContext.startRendering()
-    onProgress?.(70)
+    onProgress?.(55)
 
-    // Convert to WAV
-    const wavBuffer = audioBufferToWav(resampledBuffer)
-    onProgress?.(85)
-
-    // Clean up
+    // Clean up audio context
     await audioContext.close()
 
-    // Create new File object with WAV extension
-    const originalBaseName = file.name.replace(/\.[^/.]+$/, '')
-    const newFileName = `${originalBaseName}.wav`
+    // Convert to MP3 using lamejs
+    const mp3Data = encodeToMp3(resampledBuffer, onProgress)
+    onProgress?.(90)
 
-    const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' })
-    const wavFile = new File([wavBlob], newFileName, {
-      type: 'audio/wav',
+    // Create new File object with MP3 extension
+    const originalBaseName = file.name.replace(/\.[^/.]+$/, '')
+    const newFileName = `${originalBaseName}.mp3`
+
+    const mp3Blob = new Blob(mp3Data, { type: 'audio/mpeg' })
+    const mp3File = new File([mp3Blob], newFileName, {
+      type: 'audio/mpeg',
       lastModified: Date.now()
     })
 
     onProgress?.(100)
 
-    const compressionRatio = ((file.size - wavFile.size) / file.size * 100).toFixed(1)
-    console.log(`✅ Conversion complete: ${file.name} (${(file.size / 1024).toFixed(1)}KB) → ${newFileName} (${(wavFile.size / 1024).toFixed(1)}KB) [${compressionRatio}% ${wavFile.size < file.size ? 'smaller' : 'larger'}]`)
+    const sizeReduction = ((file.size - mp3File.size) / file.size * 100).toFixed(1)
+    console.log(`✅ Conversion complete: ${file.name} (${(file.size / 1024).toFixed(1)}KB) → ${newFileName} (${(mp3File.size / 1024).toFixed(1)}KB) [${sizeReduction}% smaller]`)
 
-    return wavFile
+    return mp3File
   } catch (error) {
     console.error('❌ Audio conversion failed:', error)
     console.warn('⚠️ Using original file as fallback')
-    return file // Fall back to original file instead of throwing
+    return file
   }
 }
 
 /**
- * Convert AudioBuffer to WAV format
+ * Encode AudioBuffer to MP3 using lamejs
  */
-function audioBufferToWav(audioBuffer: AudioBuffer): ArrayBuffer {
-  const numChannels = audioBuffer.numberOfChannels
+function encodeToMp3(audioBuffer: AudioBuffer, onProgress?: (progress: number) => void): Int8Array[] {
+  const channels = audioBuffer.numberOfChannels
   const sampleRate = audioBuffer.sampleRate
-  const length = audioBuffer.length
-  const bytesPerSample = 2 // 16-bit
-  const blockAlign = numChannels * bytesPerSample
-  const byteRate = sampleRate * blockAlign
-  const dataSize = length * blockAlign
-  const bufferSize = 44 + dataSize
+  const samples = audioBuffer.getChannelData(0)
 
-  const buffer = new ArrayBuffer(bufferSize)
-  const view = new DataView(buffer)
+  // Create MP3 encoder - 64kbps is good for speech
+  const mp3encoder = new lamejs.Mp3Encoder(1, sampleRate, 64)
 
-  // WAV header
-  writeString(view, 0, 'RIFF')
-  view.setUint32(4, 36 + dataSize, true)
-  writeString(view, 8, 'WAVE')
-  writeString(view, 12, 'fmt ')
-  view.setUint32(16, 16, true) // fmt chunk size
-  view.setUint16(20, 1, true) // audio format (PCM)
-  view.setUint16(22, numChannels, true)
-  view.setUint32(24, sampleRate, true)
-  view.setUint32(28, byteRate, true)
-  view.setUint16(32, blockAlign, true)
-  view.setUint16(34, 8 * bytesPerSample, true) // bits per sample
-  writeString(view, 36, 'data')
-  view.setUint32(40, dataSize, true)
+  const mp3Data: Int8Array[] = []
+  const sampleBlockSize = 1152 // Must be multiple of 576 for lamejs
 
-  // Audio data - interleave channels
-  let offset = 44
-  for (let i = 0; i < length; i++) {
-    for (let channel = 0; channel < numChannels; channel++) {
-      const sample = Math.max(-1, Math.min(1, audioBuffer.getChannelData(channel)[i]))
-      view.setInt16(offset, sample * 0x7FFF, true)
-      offset += 2
+  // Convert Float32Array to Int16Array
+  const samples16 = new Int16Array(samples.length)
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]))
+    samples16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+  }
+
+  // Encode in chunks
+  const totalBlocks = Math.ceil(samples16.length / sampleBlockSize)
+  for (let i = 0; i < samples16.length; i += sampleBlockSize) {
+    const chunk = samples16.subarray(i, Math.min(i + sampleBlockSize, samples16.length))
+    const mp3buf = mp3encoder.encodeBuffer(chunk)
+    if (mp3buf.length > 0) {
+      mp3Data.push(mp3buf)
+    }
+
+    // Update progress (55-90 range)
+    if (onProgress && i % (sampleBlockSize * 10) === 0) {
+      const blockProgress = (i / sampleBlockSize) / totalBlocks
+      onProgress(55 + blockProgress * 35)
     }
   }
 
-  return buffer
-}
-
-/**
- * Helper to write string to DataView
- */
-function writeString(view: DataView, offset: number, string: string): void {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i))
+  // Flush remaining data
+  const mp3buf = mp3encoder.flush()
+  if (mp3buf.length > 0) {
+    mp3Data.push(mp3buf)
   }
+
+  return mp3Data
 }
 
 /**
