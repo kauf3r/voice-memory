@@ -29,8 +29,8 @@ function determineBaseUrl(): string {
   }
 
   // Default fallback for development
-  return process.env.NODE_ENV === 'production' 
-    ? 'https://voice-memory-tau.vercel.app' 
+  return process.env.NODE_ENV === 'production'
+    ? 'https://voice.andykaufman.net'
     : 'http://localhost:3000';
 }
 
