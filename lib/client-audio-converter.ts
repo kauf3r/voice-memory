@@ -5,7 +5,7 @@
  */
 
 // @ts-ignore - lamejs doesn't have types
-import lamejs from 'lamejs'
+import lamejs from '@breezystack/lamejs'
 
 /**
  * Check if a file needs conversion (M4A/MP4 audio containers)
