@@ -1,56 +1,8 @@
 /**
- * Client-side audio conversion using FFmpeg WebAssembly
- * Converts M4A/MP4 audio files to MP3 for reliable Whisper API compatibility
+ * Client-side audio conversion using Web Audio API
+ * Converts M4A/MP4 audio files to WAV for reliable Whisper API compatibility
+ * No external dependencies - uses native browser APIs
  */
-
-import { FFmpeg } from '@ffmpeg/ffmpeg'
-import { fetchFile, toBlobURL } from '@ffmpeg/util'
-
-let ffmpeg: FFmpeg | null = null
-let ffmpegLoaded = false
-let ffmpegLoading = false
-
-/**
- * Initialize FFmpeg WebAssembly (lazy loaded)
- */
-async function initFFmpeg(): Promise<FFmpeg> {
-  if (ffmpeg && ffmpegLoaded) {
-    return ffmpeg
-  }
-
-  if (ffmpegLoading) {
-    // Wait for existing load to complete
-    while (ffmpegLoading) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-    if (ffmpeg && ffmpegLoaded) {
-      return ffmpeg
-    }
-  }
-
-  ffmpegLoading = true
-
-  try {
-    ffmpeg = new FFmpeg()
-
-    // Load FFmpeg with CORS-enabled URLs
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
-
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    })
-
-    ffmpegLoaded = true
-    console.log('✅ FFmpeg WebAssembly loaded successfully')
-    return ffmpeg
-  } catch (error) {
-    console.error('❌ Failed to load FFmpeg:', error)
-    throw new Error('Failed to initialize audio converter')
-  } finally {
-    ffmpegLoading = false
-  }
-}
 
 /**
  * Check if a file needs conversion (M4A/MP4 audio containers)
@@ -70,7 +22,7 @@ export function needsConversion(file: File): boolean {
 }
 
 /**
- * Convert audio file to MP3 format
+ * Convert audio file to WAV format using Web Audio API
  */
 export async function convertToMp3(
   file: File,
@@ -81,90 +33,141 @@ export async function convertToMp3(
     return file
   }
 
-  console.log(`🔄 Converting ${file.name} to MP3...`)
-  onProgress?.(5)
+  console.log(`🔄 Converting ${file.name} to WAV using Web Audio API...`)
+  onProgress?.(10)
 
   try {
-    const ff = await initFFmpeg()
-    onProgress?.(15)
+    // Check for AudioContext support
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextClass) {
+      console.warn('⚠️ Web Audio API not supported, using original file')
+      return file
+    }
 
-    // Generate unique filenames
-    const inputName = `input_${Date.now()}.m4a`
-    const outputName = `output_${Date.now()}.mp3`
+    const audioContext = new AudioContextClass()
+    onProgress?.(20)
 
-    // Write input file to FFmpeg virtual filesystem
-    const inputData = await fetchFile(file)
-    await ff.writeFile(inputName, inputData)
+    // Read file as ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer()
     onProgress?.(30)
 
-    // Set up progress tracking
-    ff.on('progress', ({ progress }) => {
-      // Map FFmpeg progress (0-1) to our progress range (30-90)
-      const mappedProgress = 30 + (progress * 60)
-      onProgress?.(Math.min(mappedProgress, 90))
-    })
+    // Decode audio data
+    let audioBuffer: AudioBuffer
+    try {
+      audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+      onProgress?.(50)
+    } catch (decodeError) {
+      console.warn('⚠️ Failed to decode audio, using original file:', decodeError)
+      await audioContext.close()
+      return file
+    }
 
-    // Convert to MP3 with Whisper-optimized settings
-    // - 16kHz sample rate (Whisper's native rate)
-    // - Mono channel (speech doesn't need stereo)
-    // - 64kbps bitrate (sufficient for speech)
-    await ff.exec([
-      '-i', inputName,
-      '-ar', '16000',      // 16kHz sample rate
-      '-ac', '1',          // Mono
-      '-b:a', '64k',       // 64kbps bitrate
-      '-f', 'mp3',         // MP3 format
-      outputName
-    ])
-    onProgress?.(92)
+    console.log(`📊 Audio decoded: ${audioBuffer.duration.toFixed(1)}s, ${audioBuffer.numberOfChannels}ch, ${audioBuffer.sampleRate}Hz`)
 
-    // Read the output file
-    const outputData = await ff.readFile(outputName)
-    onProgress?.(95)
+    // Resample to 16kHz mono for optimal Whisper processing
+    const targetSampleRate = 16000
+    const offlineContext = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate)
 
-    // Clean up virtual filesystem
-    await ff.deleteFile(inputName)
-    await ff.deleteFile(outputName)
+    const source = offlineContext.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(offlineContext.destination)
+    source.start()
 
-    // Create new File object with MP3 extension
+    onProgress?.(60)
+
+    const resampledBuffer = await offlineContext.startRendering()
+    onProgress?.(70)
+
+    // Convert to WAV
+    const wavBuffer = audioBufferToWav(resampledBuffer)
+    onProgress?.(85)
+
+    // Clean up
+    await audioContext.close()
+
+    // Create new File object with WAV extension
     const originalBaseName = file.name.replace(/\.[^/.]+$/, '')
-    const newFileName = `${originalBaseName}.mp3`
+    const newFileName = `${originalBaseName}.wav`
 
-    // Convert FileData to ArrayBuffer for Blob creation
-    const mp3Blob = new Blob([new Uint8Array(outputData as Uint8Array)], { type: 'audio/mpeg' })
-    const mp3File = new File([mp3Blob], newFileName, {
-      type: 'audio/mpeg',
+    const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' })
+    const wavFile = new File([wavBlob], newFileName, {
+      type: 'audio/wav',
       lastModified: Date.now()
     })
 
     onProgress?.(100)
 
-    console.log(`✅ Conversion complete: ${file.name} (${(file.size / 1024).toFixed(1)}KB) → ${newFileName} (${(mp3File.size / 1024).toFixed(1)}KB)`)
+    const compressionRatio = ((file.size - wavFile.size) / file.size * 100).toFixed(1)
+    console.log(`✅ Conversion complete: ${file.name} (${(file.size / 1024).toFixed(1)}KB) → ${newFileName} (${(wavFile.size / 1024).toFixed(1)}KB) [${compressionRatio}% ${wavFile.size < file.size ? 'smaller' : 'larger'}]`)
 
-    return mp3File
+    return wavFile
   } catch (error) {
     console.error('❌ Audio conversion failed:', error)
-    throw new Error(`Failed to convert ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    console.warn('⚠️ Using original file as fallback')
+    return file // Fall back to original file instead of throwing
   }
 }
 
 /**
- * Pre-check if FFmpeg can be loaded (for UI feedback)
+ * Convert AudioBuffer to WAV format
  */
-export async function checkFFmpegSupport(): Promise<boolean> {
+function audioBufferToWav(audioBuffer: AudioBuffer): ArrayBuffer {
+  const numChannels = audioBuffer.numberOfChannels
+  const sampleRate = audioBuffer.sampleRate
+  const length = audioBuffer.length
+  const bytesPerSample = 2 // 16-bit
+  const blockAlign = numChannels * bytesPerSample
+  const byteRate = sampleRate * blockAlign
+  const dataSize = length * blockAlign
+  const bufferSize = 44 + dataSize
+
+  const buffer = new ArrayBuffer(bufferSize)
+  const view = new DataView(buffer)
+
+  // WAV header
+  writeString(view, 0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(view, 8, 'WAVE')
+  writeString(view, 12, 'fmt ')
+  view.setUint32(16, 16, true) // fmt chunk size
+  view.setUint16(20, 1, true) // audio format (PCM)
+  view.setUint16(22, numChannels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, byteRate, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 8 * bytesPerSample, true) // bits per sample
+  writeString(view, 36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  // Audio data - interleave channels
+  let offset = 44
+  for (let i = 0; i < length; i++) {
+    for (let channel = 0; channel < numChannels; channel++) {
+      const sample = Math.max(-1, Math.min(1, audioBuffer.getChannelData(channel)[i]))
+      view.setInt16(offset, sample * 0x7FFF, true)
+      offset += 2
+    }
+  }
+
+  return buffer
+}
+
+/**
+ * Helper to write string to DataView
+ */
+function writeString(view: DataView, offset: number, string: string): void {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i))
+  }
+}
+
+/**
+ * Pre-check if audio conversion is supported
+ */
+export async function checkConversionSupport(): Promise<boolean> {
   try {
-    // Check for required browser features
-    if (typeof WebAssembly === 'undefined') {
-      console.warn('WebAssembly not supported')
-      return false
-    }
-
-    if (typeof SharedArrayBuffer === 'undefined') {
-      console.warn('SharedArrayBuffer not available - FFmpeg may have reduced performance')
-      // Still return true as FFmpeg can work without it (just slower)
-    }
-
-    return true
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    return !!AudioContextClass
   } catch {
     return false
   }
