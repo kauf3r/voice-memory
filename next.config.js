@@ -162,13 +162,13 @@ const nextConfig = {
 
   // Performance optimizations
   poweredByHeader: false,
-  
+
+  // Turbopack configuration (Next.js 16 default)
+  turbopack: {},
+
   // Environment-specific optimizations
   ...(process.env.NODE_ENV === 'production' && {
     output: 'standalone',
-    eslint: {
-      ignoreDuringBuilds: true,
-    },
     typescript: {
       ignoreBuildErrors: true,
     },
