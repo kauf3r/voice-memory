@@ -8,6 +8,7 @@ import LoadingSpinner from './LoadingSpinner'
 import ErrorMessage from './ErrorMessage'
 import { Loader } from '@/components/ai-elements/loader'
 import { Response } from '@/components/ai-elements/response'
+import { needsConversion, convertToMp3 } from '@/lib/client-audio-converter'
 
 interface UploadButtonProps {
   onUploadComplete?: () => void
@@ -45,6 +46,8 @@ export default function UploadButton({
 }: UploadButtonProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isConverting, setIsConverting] = useState(false)
+  const [conversionProgress, setConversionProgress] = useState(0)
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -96,7 +99,7 @@ export default function UploadButton({
 
     setError(null)
     onUploadStart?.(file)
-    
+
     // Initialize progress tracking
     const fileId = `${file.name}-${Date.now()}`
     setUploadProgress(prev => ({ ...prev, [fileId]: 0 }))
@@ -104,16 +107,38 @@ export default function UploadButton({
     try {
       // Get the current session for auth
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
+
       if (!session) {
         console.error('No session found')
         throw new Error('No active session. Please log in again.')
       }
-      
-      console.log('Starting chunked upload for:', file.name, `(${(file.size / 1024 / 1024).toFixed(1)}MB)`)
-      
+
+      // Convert M4A files to MP3 for reliable Whisper compatibility
+      let fileToUpload = file
+      if (needsConversion(file)) {
+        console.log(`🔄 M4A file detected, converting to MP3 for better compatibility...`)
+        setIsConverting(true)
+        setConversionProgress(0)
+
+        try {
+          fileToUpload = await convertToMp3(file, (progress) => {
+            setConversionProgress(progress)
+          })
+          console.log(`✅ Conversion complete: ${file.name} → ${fileToUpload.name}`)
+        } catch (conversionError) {
+          console.warn('⚠️ Conversion failed, uploading original file:', conversionError)
+          // Fall back to original file if conversion fails
+          fileToUpload = file
+        } finally {
+          setIsConverting(false)
+          setConversionProgress(0)
+        }
+      }
+
+      console.log('Starting chunked upload for:', fileToUpload.name, `(${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB)`)
+
       // Use direct upload with real progress tracking
-      const result = await uploadFileDirectly(file, session.access_token, fileId)
+      const result = await uploadFileDirectly(fileToUpload, session.access_token, fileId)
       if (result.success) {
         console.log('Upload completed successfully, URL:', result.url)
         onUploadComplete?.()
@@ -329,7 +354,31 @@ export default function UploadButton({
           ${isUploading ? 'cursor-not-allowed opacity-75' : ''}
         `}
       >
-        {isUploading ? (
+        {isConverting ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-center">
+              <Loader size={32} className="mr-3" />
+            </div>
+            <div>
+              <Response className="text-sm font-medium text-gray-900 text-center">
+                **Converting Audio Format**
+
+                Optimizing M4A file for best transcription quality...
+              </Response>
+              <div className="mt-4">
+                <div className="bg-gray-200 rounded-full h-2 w-full max-w-xs mx-auto">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${conversionProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  {Math.round(conversionProgress)}% • Converting to MP3
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : isUploading ? (
           <div className="space-y-4">
             <div className="flex items-center justify-center">
               <Loader size={32} className="mr-3" />
@@ -337,7 +386,7 @@ export default function UploadButton({
             <div>
               <Response className="text-sm font-medium text-gray-900 text-center">
                 **Uploading Your Voice Note**
-                
+
                 Preparing your audio file for AI analysis...
               </Response>
               {hasActiveUploads && (
