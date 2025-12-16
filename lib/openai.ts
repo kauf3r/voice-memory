@@ -259,11 +259,11 @@ class RateLimiter {
 // Use database rate limiting if configured, otherwise fall back to memory
 const rateLimiter = new RateLimiter(process.env.USE_DATABASE_RATE_LIMITING === 'true')
 
-// Retry configuration
+// Retry configuration - increased for M4A connection reliability
 const RETRY_CONFIG = {
-  maxAttempts: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '3'),
-  baseDelay: parseInt(process.env.OPENAI_RETRY_BASE_DELAY || '1000'),
-  maxDelay: parseInt(process.env.OPENAI_RETRY_MAX_DELAY || '10000')
+  maxAttempts: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '5'),
+  baseDelay: parseInt(process.env.OPENAI_RETRY_BASE_DELAY || '2000'),
+  maxDelay: parseInt(process.env.OPENAI_RETRY_MAX_DELAY || '30000')
 }
 
 /**
@@ -297,8 +297,20 @@ async function withRetry<T>(
         RETRY_CONFIG.baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000,
         RETRY_CONFIG.maxDelay
       )
-      
-      console.log(`OpenAI request failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms:`, lastError.message)
+
+      // Enhanced logging for connection errors (common with M4A files)
+      const isConnectionError = lastError.message.toLowerCase().includes('connection') ||
+                                lastError.message.toLowerCase().includes('network') ||
+                                lastError.message.toLowerCase().includes('econnreset') ||
+                                lastError.message.toLowerCase().includes('etimedout')
+
+      if (isConnectionError) {
+        console.warn(`⚠️ Connection error on attempt ${attempt}/${maxAttempts}:`, lastError.message)
+        console.warn(`   This is often transient - retrying in ${Math.round(delay/1000)}s...`)
+      } else {
+        console.log(`OpenAI request failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms:`, lastError.message)
+      }
+
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }

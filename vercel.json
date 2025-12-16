@@ -25,7 +25,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://voice-memory-tau.vercel.app"
+          "value": "https://voice.andykaufman.net"
         },
         {
           "key": "Access-Control-Allow-Methods",
