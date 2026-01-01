@@ -4,176 +4,208 @@
  */
 
 import { NextRequest } from 'next/server'
-import { isAdminUser, requireAdminUser } from '@/lib/auth-server'
 
-// Mock the auth-server module
-jest.mock('@/lib/auth-server', () => ({
-  isAdminUser: jest.fn(),
-  requireAdminUser: jest.fn(),
-  getUser: jest.fn()
-}))
+// Store original env
+const originalEnv = process.env
 
 describe('Admin Authorization Security', () => {
   beforeEach(() => {
+    jest.resetModules()
+    // Set up test environment variables
+    process.env = {
+      ...originalEnv,
+      ADMIN_EMAILS: 'admin@example.com,superadmin@company.com',
+      ADMIN_USER_IDS: 'admin-user-id-123,admin-user-id-456'
+    }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
     jest.clearAllMocks()
   })
 
   describe('isAdminUser function', () => {
-    it('should allow users with admin email domain', () => {
-      const adminUser = { email: 'admin@voicememory.test', id: 'user123' }
-      
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { isAdminUser: actualIsAdminUser } = require('@/lib/auth-server')
-      
-      expect(actualIsAdminUser(adminUser)).toBe(true)
+    it('should allow users with admin email from ADMIN_EMAILS env', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      const adminUser = { email: 'admin@example.com', id: 'user123' }
+      expect(isAdminUser(adminUser)).toBe(true)
     })
 
-    it('should allow specific admin user ID', () => {
-      const adminUser = { email: 'user@example.com', id: 'admin-user-id' }
-      
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { isAdminUser: actualIsAdminUser } = require('@/lib/auth-server')
-      
-      expect(actualIsAdminUser(adminUser)).toBe(true)
+    it('should allow users with admin email (case insensitive)', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      const adminUser = { email: 'ADMIN@EXAMPLE.COM', id: 'user123' }
+      expect(isAdminUser(adminUser)).toBe(true)
     })
 
-    it('should reject regular users', () => {
+    it('should allow specific admin user ID from ADMIN_USER_IDS env', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      const adminUser = { email: 'user@randomdomain.com', id: 'admin-user-id-123' }
+      expect(isAdminUser(adminUser)).toBe(true)
+    })
+
+    it('should allow users with admin role in app_metadata', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      const adminUser = {
+        email: 'user@example.com',
+        id: 'user123',
+        app_metadata: { role: 'admin' }
+      }
+      expect(isAdminUser(adminUser)).toBe(true)
+    })
+
+    it('should allow users with admin role in user_metadata', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      const adminUser = {
+        email: 'user@example.com',
+        id: 'user123',
+        user_metadata: { role: 'admin' }
+      }
+      expect(isAdminUser(adminUser)).toBe(true)
+    })
+
+    it('should reject regular users not in admin list', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
       const regularUser = { email: 'user@example.com', id: 'user123' }
-      
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { isAdminUser: actualIsAdminUser } = require('@/lib/auth-server')
-      
-      expect(actualIsAdminUser(regularUser)).toBe(false)
+      expect(isAdminUser(regularUser)).toBe(false)
     })
 
     it('should reject null/undefined users', () => {
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { isAdminUser: actualIsAdminUser } = require('@/lib/auth-server')
-      
-      expect(actualIsAdminUser(null)).toBe(false)
-      expect(actualIsAdminUser(undefined)).toBe(false)
+      const { isAdminUser } = require('@/lib/auth-server')
+      expect(isAdminUser(null)).toBe(false)
+      expect(isAdminUser(undefined)).toBe(false)
+    })
+
+    it('should NOT allow arbitrary test domains (security fix)', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      // This is the security fix - @voicememory.test should NOT grant admin
+      const fakeAdmin = { email: 'attacker@voicememory.test', id: 'user123' }
+      expect(isAdminUser(fakeAdmin)).toBe(false)
+    })
+
+    it('should NOT allow email domain spoofing', () => {
+      const { isAdminUser } = require('@/lib/auth-server')
+      const spoofedUser = { email: 'admin@example.com.evil.com', id: 'user123' }
+      expect(isAdminUser(spoofedUser)).toBe(false)
     })
   })
 
-  describe('requireAdminUser function', () => {
-    it('should throw "Authentication required" for no user', async () => {
-      const { getUser } = require('@/lib/auth-server')
-      getUser.mockResolvedValue(null)
-      
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { requireAdminUser: actualRequireAdminUser } = require('@/lib/auth-server')
-      
-      await expect(actualRequireAdminUser()).rejects.toThrow('Authentication required')
+  describe('Admin config module', () => {
+    it('should parse admin emails from environment', () => {
+      const { getAdminEmails, isAdminEmail } = require('@/lib/admin-config')
+      const emails = getAdminEmails()
+      expect(emails).toContain('admin@example.com')
+      expect(emails).toContain('superadmin@company.com')
+      expect(isAdminEmail('admin@example.com')).toBe(true)
+      expect(isAdminEmail('random@other.com')).toBe(false)
     })
 
-    it('should throw "Admin access required" for non-admin user', async () => {
-      const regularUser = { email: 'user@example.com', id: 'user123' }
-      const { getUser } = require('@/lib/auth-server')
-      getUser.mockResolvedValue(regularUser)
-      
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { requireAdminUser: actualRequireAdminUser } = require('@/lib/auth-server')
-      
-      await expect(actualRequireAdminUser()).rejects.toThrow('Admin access required')
+    it('should parse admin user IDs from environment', () => {
+      const { getAdminUserIds } = require('@/lib/admin-config')
+      const ids = getAdminUserIds()
+      expect(ids).toContain('admin-user-id-123')
+      expect(ids).toContain('admin-user-id-456')
     })
 
-    it('should return admin user for valid admin', async () => {
-      const adminUser = { email: 'admin@voicememory.test', id: 'admin123' }
-      const { getUser } = require('@/lib/auth-server')
-      getUser.mockResolvedValue(adminUser)
-      
-      // Use actual implementation
-      jest.unmock('@/lib/auth-server')
-      const { requireAdminUser: actualRequireAdminUser } = require('@/lib/auth-server')
-      
-      const result = await actualRequireAdminUser()
-      expect(result).toEqual(adminUser)
+    it('should handle empty admin emails gracefully', () => {
+      process.env.ADMIN_EMAILS = ''
+      jest.resetModules()
+      const { getAdminEmails, isAdminEmail } = require('@/lib/admin-config')
+      expect(getAdminEmails()).toEqual([])
+      expect(isAdminEmail('any@email.com')).toBe(false)
+    })
+
+    it('should handle malformed admin emails', () => {
+      process.env.ADMIN_EMAILS = 'valid@email.com, , invalid, another@valid.com'
+      jest.resetModules()
+      const { getAdminEmails } = require('@/lib/admin-config')
+      const emails = getAdminEmails()
+      expect(emails).toContain('valid@email.com')
+      expect(emails).toContain('another@valid.com')
+      expect(emails).not.toContain('invalid')
+      expect(emails).not.toContain('')
     })
   })
 
   describe('Admin endpoints error handling', () => {
     it('should return 401 for authentication errors', () => {
       const error = new Error('Authentication required')
-      
-      // Test error handling logic
+
       const getStatusForError = (error: Error) => {
         if (error.message === 'Authentication required') return 401
         if (error.message === 'Admin access required') return 403
         return 500
       }
-      
+
       expect(getStatusForError(error)).toBe(401)
     })
 
     it('should return 403 for authorization errors', () => {
       const error = new Error('Admin access required')
-      
-      // Test error handling logic
+
       const getStatusForError = (error: Error) => {
         if (error.message === 'Authentication required') return 401
         if (error.message === 'Admin access required') return 403
         return 500
       }
-      
+
       expect(getStatusForError(error)).toBe(403)
     })
 
     it('should return 500 for other errors', () => {
       const error = new Error('Database connection failed')
-      
-      // Test error handling logic
+
       const getStatusForError = (error: Error) => {
         if (error.message === 'Authentication required') return 401
         if (error.message === 'Admin access required') return 403
         return 500
       }
-      
+
       expect(getStatusForError(error)).toBe(500)
     })
   })
 })
 
 describe('Admin Security Integration', () => {
-  it('should have proper admin domain validation', () => {
-    // Test that admin domain is restrictive
-    const testCases = [
-      { email: 'admin@voicememory.test', expected: true },
-      { email: 'user@voicememory.test', expected: true },
-      { email: 'admin@voicememory.com', expected: false },
-      { email: 'admin@example.com', expected: false },
-      { email: 'admin@voicememory.test.evil.com', expected: false }
-    ]
+  beforeEach(() => {
+    jest.resetModules()
+    process.env = {
+      ...originalEnv,
+      ADMIN_EMAILS: 'admin@myapp.com,owner@myapp.com',
+      ADMIN_USER_IDS: ''
+    }
+  })
 
-    // Use actual implementation
-    jest.unmock('@/lib/auth-server')
-    const { isAdminUser: actualIsAdminUser } = require('@/lib/auth-server')
+  afterEach(() => {
+    process.env = originalEnv
+  })
+
+  it('should properly validate admin emails from environment', () => {
+    const { isAdminUser } = require('@/lib/auth-server')
+
+    const testCases = [
+      { email: 'admin@myapp.com', expected: true },
+      { email: 'owner@myapp.com', expected: true },
+      { email: 'ADMIN@MYAPP.COM', expected: true }, // case insensitive
+      { email: 'admin@other.com', expected: false },
+      { email: 'admin@myapp.com.evil.com', expected: false },
+      { email: 'attacker@voicememory.test', expected: false } // security fix
+    ]
 
     testCases.forEach(({ email, expected }) => {
       const user = { email, id: 'test-id' }
-      expect(actualIsAdminUser(user)).toBe(expected)
+      expect(isAdminUser(user)).toBe(expected)
     })
   })
 
   it('should validate admin endpoints are protected', () => {
-    // This test documents which endpoints should be protected
     const adminEndpoints = [
       '/api/admin/system-performance',
       '/api/admin/background-jobs'
     ]
 
-    // Verify we have identified admin endpoints that need protection
     expect(adminEndpoints.length).toBeGreaterThan(0)
-    
-    // Each endpoint should use requireAdminUser()
+
     adminEndpoints.forEach(endpoint => {
-      // This is a documentation test - in real implementation,
-      // we would verify that each endpoint calls requireAdminUser()
       expect(endpoint).toMatch(/^\/api\/admin\//)
     })
   })

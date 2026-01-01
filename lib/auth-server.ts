@@ -4,6 +4,7 @@
  */
 
 import { createServiceClient } from './supabase-server'
+import { isAdminEmail, getAdminUserIds } from './admin-config'
 
 export async function getUser() {
   try {
@@ -30,26 +31,23 @@ interface User {
 
 export function isAdminUser(user: User | null | undefined): boolean {
   if (!user) return false
-  
-  // Check admin email domain
-  if (user.email?.endsWith('@voicememory.test')) {
+
+  // Check admin email list (from environment variable)
+  if (isAdminEmail(user.email)) {
     return true
   }
-  
-  // Check specific admin user IDs
-  const adminUserIds = [
-    'admin-user-id' // Add specific admin user IDs here
-  ]
-  
+
+  // Check specific admin user IDs (from environment variable)
+  const adminUserIds = getAdminUserIds()
   if (adminUserIds.includes(user.id)) {
     return true
   }
-  
-  // Check for admin role in metadata (future enhancement)
+
+  // Check for admin role in metadata
   if (user.app_metadata?.role === 'admin' || user.user_metadata?.role === 'admin') {
     return true
   }
-  
+
   return false
 }
 
