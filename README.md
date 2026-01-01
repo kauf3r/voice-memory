@@ -1,5 +1,11 @@
 # Voice Memory 🎯
 
+[![Next.js](https://img.shields.io/badge/Next.js-15.4-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-green.svg)](https://supabase.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-Whisper%20%2B%20GPT--4-412991.svg)](https://openai.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 **Production-Ready AI Voice Analysis Platform**
 
 Transform voice notes into actionable insights with sophisticated AI-powered analysis. Built with Next.js 15.4.5, enhanced by Claude Code integration, and accelerated by specialized development agents.
