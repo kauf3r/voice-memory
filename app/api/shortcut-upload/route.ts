@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase-server'
 import { uploadAudioFile } from '@/lib/storage'
+import { validateFileUpload, checkUploadRateLimit } from '@/lib/security/file-validation'
 
 // Simple API key upload endpoint for iOS Shortcuts
 // Uses a static API key from environment variable
 
 const SHORTCUT_API_KEY = process.env.SHORTCUT_API_KEY
+const SHORTCUT_RATE_LIMIT_ID = 'shortcut-api' // Rate limit identifier for shortcut uploads
 
 // GET: Returns a presigned upload URL for direct upload to Supabase
 export async function GET(request: NextRequest) {
@@ -18,6 +20,15 @@ export async function GET(request: NextRequest) {
   const apiKey = request.headers.get('X-API-Key') || request.headers.get('x-api-key')
   if (!apiKey || apiKey !== SHORTCUT_API_KEY) {
     return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
+  }
+
+  // Rate limiting check for presigned URL generation
+  const rateLimitResult = checkUploadRateLimit(SHORTCUT_RATE_LIMIT_ID + '-presign', 20, 60000)
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', resetTime: rateLimitResult.resetTime },
+      { status: 429 }
+    )
   }
 
   const userId = process.env.SHORTCUT_USER_ID
@@ -66,6 +77,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: 'Invalid API key' },
       { status: 401 }
+    )
+  }
+
+  // Rate limiting check (10 uploads per minute for shortcut API)
+  const rateLimitResult = checkUploadRateLimit(SHORTCUT_RATE_LIMIT_ID, 10, 60000)
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Rate limit exceeded',
+        details: rateLimitResult.error,
+        remaining: rateLimitResult.remaining,
+        resetTime: rateLimitResult.resetTime
+      },
+      { status: 429 }
     )
   }
 
@@ -171,14 +196,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Basic validation
-    const maxSize = 25 * 1024 * 1024 // 25MB
-    if (file.size > maxSize) {
+    // Comprehensive security validation (same as main upload endpoint)
+    console.log('Starting file validation for shortcut upload...')
+    const validationResult = await validateFileUpload(file)
+
+    if (!validationResult.valid) {
+      console.error('File validation failed:', validationResult.errors)
       return NextResponse.json(
-        { error: `File too large. Maximum size is 25MB.` },
-        { status: 413 }
+        {
+          error: 'File validation failed',
+          details: validationResult.errors.join('. '),
+          warnings: validationResult.warnings,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        },
+        { status: 400 }
       )
     }
+
+    // Log validation warnings if any
+    if (validationResult.warnings && validationResult.warnings.length > 0) {
+      console.warn('File validation warnings:', validationResult.warnings)
+    }
+
+    console.log('File validation passed:', {
+      sanitizedFilename: validationResult.sanitizedFilename,
+      detectedMimeType: validationResult.detectedMimeType,
+      fileHash: validationResult.fileHash
+    })
 
     // Get the shortcut user ID from env (or use a default for single-user setup)
     const userId = process.env.SHORTCUT_USER_ID
@@ -194,14 +240,12 @@ export async function POST(request: NextRequest) {
     // Use service client to bypass RLS
     const supabase = createServiceClient()
 
-    // Generate a clean filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const extension = file.name.split('.').pop() || 'm4a'
-    const sanitizedFilename = `shortcut-${timestamp}.${extension}`
+    // Use the sanitized filename from validation
+    const sanitizedFilename = validationResult.sanitizedFilename || `shortcut-${Date.now()}.m4a`
 
-    // Create sanitized file
+    // Create sanitized file with validated MIME type
     const sanitizedFile = new File([file], sanitizedFilename, {
-      type: file.type || 'audio/m4a',
+      type: validationResult.detectedMimeType || file.type || 'audio/m4a',
       lastModified: file.lastModified
     })
 

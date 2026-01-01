@@ -1,109 +1,53 @@
 import { z } from 'zod'
+// Schema structure mirrors types.ts NoteAnalysis - validated at runtime
 
-// Domain enum for BIB categorization
-const DomainEnum = z.enum(['WORK', 'PERS', 'PROJ', 'IDEA'])
+/**
+ * Zod schemas aligned with lib/types.ts NoteAnalysis interface
+ *
+ * IMPORTANT: These schemas MUST match the TypeScript types in types.ts
+ * The prompt in analysis.ts produces output matching these schemas.
+ */
 
-// Severity enum for blockers
-const SeverityEnum = z.enum(['critical', 'moderate', 'minor'])
+// Task urgency and domain enums (match types.ts)
+const TaskUrgencySchema = z.enum(['NOW', 'SOON', 'LATER'])
+const TaskDomainSchema = z.enum(['WORK', 'PERS', 'PROJ'])
+const MoodSchema = z.enum(['positive', 'neutral', 'negative'])
 
-// Time sensitivity enum for opportunities
-const TimeSensitivityEnum = z.enum(['urgent', 'soon', 'someday'])
+// AnalysisTask schema (matches types.ts AnalysisTask)
+const AnalysisTaskSchema = z.object({
+  title: z.string(),
+  urgency: TaskUrgencySchema,
+  domain: TaskDomainSchema,
+  dueDate: z.string().optional(),
+  assignedTo: z.string().optional(),
+  context: z.string().optional(),
+})
 
-// Zod schema for validating GPT-4 analysis results - Match the flat structure from analysis.ts
+// DraftMessage schema (matches types.ts DraftMessage)
+const DraftMessageSchema = z.object({
+  recipient: z.string(),
+  subject: z.string(),
+  body: z.string(),
+})
+
+// MentionedPerson schema (matches types.ts MentionedPerson)
+const MentionedPersonSchema = z.object({
+  name: z.string(),
+  context: z.string(),
+  relationship: z.string().optional(),
+})
+
+// Main NoteAnalysis schema - MUST match types.ts NoteAnalysis interface
+// The structure is validated at runtime; ValidatedAnalysis type is inferred from schema
 export const AnalysisSchema = z.object({
-  sentiment: z.object({
-    classification: z.enum(['Positive', 'Neutral', 'Negative']),
-    explanation: z.string(),
-  }),
-  focusTopics: z.object({
-    primary: z.string(),
-    minor: z.array(z.string()).min(2).max(2),
-  }),
-  tasks: z.object({
-    myTasks: z.array(z.string()).default([]),
-    delegatedTasks: z.array(z.object({
-      task: z.string(),
-      assignedTo: z.string(),
-      nextSteps: z.string(),
-    })).default([]),
-  }),
-  keyIdeas: z.array(z.string()).default([]),
-  messagesToDraft: z.array(z.object({
-    recipient: z.string(),
-    subject: z.string(),
-    body: z.string(),
-  })).default([]),
-  crossReferences: z.object({
-    relatedNotes: z.array(z.string()).default([]),
-    projectKnowledgeUpdates: z.array(z.string()).default([]),
-  }),
-  outreachIdeas: z.array(z.object({
-    contact: z.string(),
-    topic: z.string(),
-    purpose: z.string(),
-  })).default([]),
-
-  // BIB Framework fields
-  theOneThing: z.object({
-    description: z.string(),
-    domain: DomainEnum,
-    whyImportant: z.string(),
-  }).nullable().optional(),
-
-  blockers: z.array(z.object({
-    description: z.string(),
-    severity: SeverityEnum,
-    domain: DomainEnum,
-    potentialSolutions: z.array(z.string()).default([]),
-  })).default([]),
-
-  opportunities: z.array(z.object({
-    description: z.string(),
-    domain: DomainEnum,
-    timeSensitivity: TimeSensitivityEnum,
-    nextAction: z.string(),
-  })).default([]),
-
-  sopCandidates: z.array(z.object({
-    triggerPhrase: z.string(),
-    processDescription: z.string(),
-    suggestedTitle: z.string(),
-    domain: DomainEnum,
-    confidence: z.number().min(0).max(1),
-  })).default([]),
-
-  structuredData: z.object({
-    dates: z.array(z.object({
-      date: z.string(),
-      context: z.string(),
-      type: z.enum(['past', 'future', 'deadline', 'meeting', 'event']),
-    })).default([]),
-    times: z.array(z.object({
-      time: z.string(),
-      context: z.string(),
-      type: z.enum(['arrival', 'departure', 'meeting', 'deadline', 'general']),
-    })).default([]),
-    locations: z.array(z.object({
-      place: z.string(),
-      context: z.string(),
-      type: z.enum(['destination', 'origin', 'meeting_place', 'reference']),
-    })).default([]),
-    numbers: z.array(z.object({
-      value: z.string(),
-      context: z.string(),
-      type: z.enum(['quantity', 'measurement', 'price', 'duration', 'identifier']),
-    })).default([]),
-    people: z.array(z.object({
-      name: z.string(),
-      context: z.string(),
-      relationship: z.string().optional(),
-    })).default([]),
-  }),
-  recordingContext: z.object({
-    recordedAt: z.string(),
-    extractedDate: z.string().optional(),
-    timeReferences: z.array(z.string()).default([]),
-  }),
+  summary: z.string(),
+  mood: MoodSchema,
+  topic: z.string(),
+  theOneThing: z.string().nullable(),
+  tasks: z.array(AnalysisTaskSchema).default([]),
+  draftMessages: z.array(DraftMessageSchema).default([]),
+  people: z.array(MentionedPersonSchema).default([]),
+  recordedAt: z.string(),
 })
 
 export type ValidatedAnalysis = z.infer<typeof AnalysisSchema>
@@ -118,234 +62,107 @@ export function validateAnalysis(rawAnalysis: unknown): {
     return { analysis, error: null }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessages = error.errors.map(err => 
+      const errorMessages = error.errors.map(err =>
         `${err.path.join('.')}: ${err.message}`
       ).join('; ')
-      
+
       console.error('Analysis validation failed:', errorMessages)
-      
+
       // Try to create a partial analysis with what we can salvage
       try {
         const partialAnalysis = createPartialAnalysis(rawAnalysis)
-        return { 
-          analysis: partialAnalysis, 
-          error: `Partial validation: ${errorMessages}` 
+        return {
+          analysis: partialAnalysis,
+          error: `Partial validation: ${errorMessages}`
         }
       } catch (partialError) {
-        return { 
-          analysis: null, 
-          error: `Validation failed: ${errorMessages}` 
+        return {
+          analysis: null,
+          error: `Validation failed: ${errorMessages}`
         }
       }
     }
-    
-    return { 
-      analysis: null, 
-      error: 'Unknown validation error' 
+
+    return {
+      analysis: null,
+      error: 'Unknown validation error'
     }
   }
 }
 
-// Helper type for unknown analysis structure
+// Helper type for raw analysis data (matches simplified NoteAnalysis structure)
 interface RawAnalysisData {
-  sentiment?: {
-    classification?: unknown
-    explanation?: unknown
-  }
-  focusTopics?: {
-    primary?: unknown
-    minor?: unknown
-  }
-  tasks?: {
-    myTasks?: unknown
-    delegatedTasks?: unknown
-  }
-  keyIdeas?: unknown
-  messagesToDraft?: unknown
-  crossReferences?: {
-    relatedNotes?: unknown
-    projectKnowledgeUpdates?: unknown
-  }
-  outreachIdeas?: unknown
-  // BIB Framework fields
-  theOneThing?: {
-    description?: unknown
-    domain?: unknown
-    whyImportant?: unknown
-  } | null
-  blockers?: unknown
-  opportunities?: unknown
-  sopCandidates?: unknown
-  structuredData?: {
-    dates?: unknown
-    times?: unknown
-    locations?: unknown
-    numbers?: unknown
-    people?: unknown
-  }
-  recordingContext?: {
-    recordedAt?: unknown
-    extractedDate?: unknown
-    timeReferences?: unknown
-  }
+  summary?: unknown
+  mood?: unknown
+  topic?: unknown
+  theOneThing?: unknown
+  tasks?: unknown[]
+  draftMessages?: unknown[]
+  people?: unknown[]
+  recordedAt?: unknown
 }
 
-// Create a partial analysis with fallback values - now matching flat structure
+// Create a partial analysis with fallback values - matches simplified NoteAnalysis
 function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
   const raw = rawAnalysis as RawAnalysisData
-  
+
   return {
-    sentiment: {
-      classification: ['Positive', 'Neutral', 'Negative'].includes(raw?.sentiment?.classification) 
-        ? raw.sentiment.classification as 'Positive' | 'Neutral' | 'Negative'
-        : 'Neutral',
-      explanation: typeof raw?.sentiment?.explanation === 'string' 
-        ? raw.sentiment.explanation 
-        : 'Analysis incomplete',
-    },
-    focusTopics: {
-      primary: typeof raw?.focusTopics?.primary === 'string' 
-        ? raw.focusTopics.primary 
-        : 'General',
-      minor: Array.isArray(raw?.focusTopics?.minor) && raw.focusTopics.minor.length >= 2
-        ? [raw.focusTopics.minor[0], raw.focusTopics.minor[1]]
-        : ['Topic1', 'Topic2'],
-    },
-    tasks: {
-      myTasks: Array.isArray(raw?.tasks?.myTasks) 
-        ? raw.tasks.myTasks.filter((t) => typeof t === 'string' && t.length > 0)
-        : [],
-      delegatedTasks: Array.isArray(raw?.tasks?.delegatedTasks)
-        ? raw.tasks.delegatedTasks.filter((t) => 
-            t && typeof t.task === 'string' && 
-            typeof t.assignedTo === 'string' && 
-            typeof t.nextSteps === 'string'
+    summary: typeof raw?.summary === 'string' ? raw.summary : 'Analysis incomplete',
+    mood: ['positive', 'neutral', 'negative'].includes(raw?.mood as string)
+      ? (raw.mood as 'positive' | 'neutral' | 'negative')
+      : 'neutral',
+    topic: typeof raw?.topic === 'string' ? raw.topic : 'General',
+    theOneThing: typeof raw?.theOneThing === 'string' ? raw.theOneThing : null,
+    tasks: Array.isArray(raw?.tasks)
+      ? raw.tasks
+          .filter((t): t is Record<string, unknown> =>
+            t !== null &&
+            typeof t === 'object' &&
+            typeof (t as Record<string, unknown>).title === 'string' &&
+            ['NOW', 'SOON', 'LATER'].includes((t as Record<string, unknown>).urgency as string) &&
+            ['WORK', 'PERS', 'PROJ'].includes((t as Record<string, unknown>).domain as string)
           )
-        : [],
-    },
-    keyIdeas: Array.isArray(raw?.keyIdeas)
-      ? raw.keyIdeas.filter((idea) => typeof idea === 'string' && idea.length > 0)
+          .map(t => ({
+            title: t.title as string,
+            urgency: t.urgency as 'NOW' | 'SOON' | 'LATER',
+            domain: t.domain as 'WORK' | 'PERS' | 'PROJ',
+            dueDate: typeof t.dueDate === 'string' ? t.dueDate : undefined,
+            assignedTo: typeof t.assignedTo === 'string' ? t.assignedTo : undefined,
+            context: typeof t.context === 'string' ? t.context : undefined,
+          }))
       : [],
-    messagesToDraft: Array.isArray(raw?.messagesToDraft)
-      ? raw.messagesToDraft.filter((msg) =>
-          msg && typeof msg.recipient === 'string' &&
-          typeof msg.subject === 'string' &&
-          typeof msg.body === 'string'
-        )
-      : [],
-    crossReferences: {
-      relatedNotes: Array.isArray(raw?.crossReferences?.relatedNotes)
-        ? raw.crossReferences.relatedNotes.filter((note) => typeof note === 'string')
-        : [],
-      projectKnowledgeUpdates: Array.isArray(raw?.crossReferences?.projectKnowledgeUpdates)
-        ? raw.crossReferences.projectKnowledgeUpdates.filter((update) => typeof update === 'string')
-        : [],
-    },
-    outreachIdeas: Array.isArray(raw?.outreachIdeas)
-      ? raw.outreachIdeas.filter((idea) =>
-          idea && typeof idea.contact === 'string' &&
-          typeof idea.topic === 'string' &&
-          typeof idea.purpose === 'string'
-        )
-      : [],
-    // BIB Framework fields with fallbacks
-    theOneThing: raw?.theOneThing &&
-      typeof raw.theOneThing.description === 'string' &&
-      typeof raw.theOneThing.domain === 'string' &&
-      ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(raw.theOneThing.domain) &&
-      typeof raw.theOneThing.whyImportant === 'string'
-        ? {
-            description: raw.theOneThing.description,
-            domain: raw.theOneThing.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
-            whyImportant: raw.theOneThing.whyImportant,
-          }
-        : null,
-    blockers: Array.isArray(raw?.blockers)
-      ? raw.blockers.filter((b) =>
-          b && typeof b.description === 'string' &&
-          typeof b.severity === 'string' &&
-          ['critical', 'moderate', 'minor'].includes(b.severity) &&
-          typeof b.domain === 'string' &&
-          ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(b.domain)
-        ).map((b) => ({
-          description: b.description,
-          severity: b.severity as 'critical' | 'moderate' | 'minor',
-          domain: b.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
-          potentialSolutions: Array.isArray(b.potentialSolutions)
-            ? b.potentialSolutions.filter((s: unknown) => typeof s === 'string')
-            : [],
-        }))
-      : [],
-    opportunities: Array.isArray(raw?.opportunities)
-      ? raw.opportunities.filter((o) =>
-          o && typeof o.description === 'string' &&
-          typeof o.domain === 'string' &&
-          ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(o.domain) &&
-          typeof o.timeSensitivity === 'string' &&
-          ['urgent', 'soon', 'someday'].includes(o.timeSensitivity) &&
-          typeof o.nextAction === 'string'
-        ).map((o) => ({
-          description: o.description,
-          domain: o.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
-          timeSensitivity: o.timeSensitivity as 'urgent' | 'soon' | 'someday',
-          nextAction: o.nextAction,
-        }))
-      : [],
-    sopCandidates: Array.isArray(raw?.sopCandidates)
-      ? raw.sopCandidates.filter((s) =>
-          s && typeof s.triggerPhrase === 'string' &&
-          typeof s.processDescription === 'string' &&
-          typeof s.suggestedTitle === 'string' &&
-          typeof s.domain === 'string' &&
-          ['WORK', 'PERS', 'PROJ', 'IDEA'].includes(s.domain) &&
-          typeof s.confidence === 'number' &&
-          s.confidence >= 0 && s.confidence <= 1
-        ).map((s) => ({
-          triggerPhrase: s.triggerPhrase,
-          processDescription: s.processDescription,
-          suggestedTitle: s.suggestedTitle,
-          domain: s.domain as 'WORK' | 'PERS' | 'PROJ' | 'IDEA',
-          confidence: s.confidence,
-        }))
-      : [],
-    structuredData: {
-      dates: Array.isArray(raw?.structuredData?.dates)
-        ? raw.structuredData.dates.filter((d) =>
-            d && typeof d.date === 'string' && typeof d.context === 'string'
+    draftMessages: Array.isArray(raw?.draftMessages)
+      ? raw.draftMessages
+          .filter((m): m is Record<string, unknown> =>
+            m !== null &&
+            typeof m === 'object' &&
+            typeof (m as Record<string, unknown>).recipient === 'string' &&
+            typeof (m as Record<string, unknown>).subject === 'string' &&
+            typeof (m as Record<string, unknown>).body === 'string'
           )
-        : [],
-      times: Array.isArray(raw?.structuredData?.times)
-        ? raw.structuredData.times.filter((t) =>
-            t && typeof t.time === 'string' && typeof t.context === 'string'
+          .map(m => ({
+            recipient: m.recipient as string,
+            subject: m.subject as string,
+            body: m.body as string,
+          }))
+      : [],
+    people: Array.isArray(raw?.people)
+      ? raw.people
+          .filter((p): p is Record<string, unknown> =>
+            p !== null &&
+            typeof p === 'object' &&
+            typeof (p as Record<string, unknown>).name === 'string' &&
+            typeof (p as Record<string, unknown>).context === 'string'
           )
-        : [],
-      locations: Array.isArray(raw?.structuredData?.locations)
-        ? raw.structuredData.locations.filter((l) =>
-            l && typeof l.place === 'string' && typeof l.context === 'string'
-          )
-        : [],
-      numbers: Array.isArray(raw?.structuredData?.numbers)
-        ? raw.structuredData.numbers.filter((n) =>
-            n && typeof n.value === 'string' && typeof n.context === 'string'
-          )
-        : [],
-      people: Array.isArray(raw?.structuredData?.people)
-        ? raw.structuredData.people.filter((p) =>
-            p && typeof p.name === 'string' && typeof p.context === 'string'
-          )
-        : [],
-    },
-    recordingContext: {
-      recordedAt: typeof raw?.recordingContext?.recordedAt === 'string'
-        ? raw.recordingContext.recordedAt
-        : new Date().toISOString(),
-      extractedDate: typeof raw?.recordingContext?.extractedDate === 'string'
-        ? raw.recordingContext.extractedDate
-        : undefined,
-      timeReferences: Array.isArray(raw?.recordingContext?.timeReferences)
-        ? raw.recordingContext.timeReferences.filter((ref) => typeof ref === 'string')
-        : [],
-    },
+          .map(p => ({
+            name: p.name as string,
+            context: p.context as string,
+            relationship: typeof p.relationship === 'string' ? p.relationship : undefined,
+          }))
+      : [],
+    recordedAt: typeof raw?.recordedAt === 'string'
+      ? raw.recordedAt
+      : new Date().toISOString(),
   }
 }
 

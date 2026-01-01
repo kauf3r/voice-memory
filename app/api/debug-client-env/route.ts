@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server'
 
 export async function GET() {
+  // SECURITY: Only allow in development mode
+  if (process.env.NODE_ENV !== 'development') {
+    return new NextResponse(null, { status: 404 })
+  }
+
   // This endpoint returns environment variables that should be available on the client
   // We'll compare these with what the client actually receives
-  
+
   return NextResponse.json({
     server_side: {
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
