@@ -44,15 +44,18 @@ export async function GET(request: NextRequest) {
     
     // Create database service instance with authenticated client
     const dbService = createDatabaseService(dbClient)
-    
-    // Fetch notes with analysis using abstracted database layer
-    const notesResult = await dbService.getNotesByUser(user.id, {
-      hasAnalysis: true,
-      orderBy: 'processed_at',
-      ascending: false,
-      limit: 100
-    })
-    
+
+    // Parallelize: fetch notes and pinned tasks simultaneously (both only need user.id)
+    const [notesResult, pinnedTasksResult] = await Promise.all([
+      dbService.getNotesByUser(user.id, {
+        hasAnalysis: true,
+        orderBy: 'processed_at',
+        ascending: false,
+        limit: 100
+      }),
+      dbService.getPinnedTasksByUser(user.id)
+    ])
+
     if (!notesResult.success) {
       console.error('❌ Error fetching notes:', notesResult.error)
       return NextResponse.json(
@@ -60,24 +63,26 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       )
     }
-    
+
     const notes = notesResult.data || []
-    
+    const pinnedTasks = pinnedTasksResult.success ? (pinnedTasksResult.data || []) : []
+    const pinnedTaskIdSet = new Set(pinnedTasks.map(pin => pin.task_id))
+
     // Extract tasks from analysis with improved error handling
     const tasks: any[] = []
-    
+
     if (notes) {
       for (const note of notes) {
         try {
-          const analysis = typeof note.analysis === 'string' 
-            ? JSON.parse(note.analysis) 
+          const analysis = typeof note.analysis === 'string'
+            ? JSON.parse(note.analysis)
             : note.analysis
-          
+
           if (analysis?.tasks && Array.isArray(analysis.tasks)) {
             for (const [index, task] of analysis.tasks.entries()) {
               // Generate consistent task ID format for tracking
               const taskId = `${note.id}-task-${index}`
-              
+
               tasks.push({
                 id: taskId,
                 description: task.description || task.task || '',
@@ -85,6 +90,7 @@ export async function GET(request: NextRequest) {
                 date: note.processed_at,
                 noteId: note.id,
                 completed: false, // Will be updated below
+                pinned: pinnedTaskIdSet.has(taskId), // Set pin status immediately
                 assignedTo: task.assignedTo,
                 nextSteps: task.nextSteps,
                 noteContext: task.context,
@@ -97,19 +103,19 @@ export async function GET(request: NextRequest) {
         }
       }
     }
-    
-    // Fetch task states using abstracted database layer
+
+    // Fetch task states (needs taskIds from notes processing)
     if (tasks.length > 0) {
       const taskIds = tasks.map(t => t.id)
       const taskStatesResult = await dbService.getTaskStatesByUser(user.id, taskIds)
-      
+
       if (!taskStatesResult.success) {
         console.warn('⚠️ Error fetching task states:', taskStatesResult.error)
       } else {
         const taskStates = taskStatesResult.data || []
         // Create state lookup map for O(1) access
         const stateMap = new Map(taskStates.map(s => [s.task_id, s]))
-        
+
         // Apply task state efficiently
         tasks.forEach(task => {
           const state = stateMap.get(task.id)
@@ -120,26 +126,6 @@ export async function GET(request: NextRequest) {
         })
       }
     }
-    
-    // Get pin status for tasks using abstracted database layer
-    let pinnedTaskIds: string[] = []
-    if (tasks.length > 0) {
-      const taskIds = tasks.map(t => t.id)
-      const pinnedTasksResult = await dbService.getPinnedTasksByUser(user.id)
-      
-      if (pinnedTasksResult.success) {
-        const pinnedTasks = pinnedTasksResult.data || []
-        // Filter to only include tasks that are in our current task list
-        pinnedTaskIds = pinnedTasks
-          .filter(pin => taskIds.includes(pin.task_id))
-          .map(pin => pin.task_id)
-      }
-    }
-    
-    // Add pin status to tasks
-    tasks.forEach(task => {
-      task.pinned = pinnedTaskIds.includes(task.id)
-    })
     
     const completedCount = tasks.filter(t => t.completed).length
     const pinnedCount = tasks.filter(t => t.pinned).length
