@@ -126,67 +126,73 @@ export class TaskStateService {
   }
 
   /**
-   * Pin a task
+   * Pin a task using atomic RPC to prevent race conditions
    */
   async pinTask(params: PinTaskParams): Promise<TaskState> {
     const { user_id, task_id, note_id } = params
 
-    // Check current pin count
-    const { count: currentPinCount, error: countError } = await this.supabase
-      .from('task_states')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', user_id)
-      .eq('pinned', true)
-
-    if (countError) {
-      throw new Error(`Failed to check pin count: ${countError.message}`)
-    }
-
-    if (currentPinCount !== null && currentPinCount >= 10) {
-      throw new Error('Pin limit exceeded. Maximum 10 tasks can be pinned per user.')
-    }
-
-    // Get or create task state
-    const taskState = await this.getOrCreateTaskState(params)
-
-    if (taskState.pinned) {
-      throw new Error('Task is already pinned')
-    }
-
-    // Calculate next pin order
-    const { data: lastPin, error: orderError } = await this.supabase
-      .from('task_states')
-      .select('pin_order')
-      .eq('user_id', user_id)
-      .eq('pinned', true)
-      .order('pin_order', { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (orderError) {
-      throw new Error(`Failed to get pin order: ${orderError.message}`)
-    }
-
-    const nextPinOrder = (lastPin?.pin_order || 0) + 1
-
-    // Update the task state
-    const { data: updated, error: updateError } = await this.supabase
-      .from('task_states')
-      .update({
-        pinned: true,
-        pinned_at: new Date().toISOString(),
-        pin_order: nextPinOrder,
-        updated_at: new Date().toISOString()
+    // Use atomic RPC function that handles locking and pin order calculation
+    const { data, error } = await this.supabase
+      .rpc('pin_task_atomic', {
+        p_user_id: user_id,
+        p_task_id: task_id,
+        p_note_id: note_id
       })
-      .eq('id', taskState.id)
-      .select(TASK_STATE_COLUMNS)
       .single()
 
-    if (updateError) {
-      throw new Error(`Failed to pin task: ${updateError.message}`)
+    if (error) {
+      // Map database errors to user-friendly messages
+      if (error.message.includes('Pin limit exceeded')) {
+        throw new Error('Pin limit exceeded. Maximum 10 tasks can be pinned per user.')
+      }
+      if (error.message.includes('already pinned')) {
+        throw new Error('Task is already pinned')
+      }
+      if (error.message.includes('Access denied')) {
+        throw new Error('Access denied')
+      }
+      throw new Error(`Failed to pin task: ${error.message}`)
     }
 
-    return updated as TaskState
+    if (!data) {
+      throw new Error('Failed to pin task: no data returned')
+    }
+
+    // Type assertion for RPC response
+    const rpcResult = data as {
+      id: number
+      user_id: string
+      task_id: string
+      note_id: string
+      completed: boolean
+      completed_at: string | null
+      pinned: boolean
+      pinned_at: string | null
+      pin_order: number | null
+      archived: boolean
+      created_at: string
+      updated_at: string
+    }
+
+    // Map RPC response to TaskState (fill in missing fields with defaults)
+    return {
+      id: String(rpcResult.id),
+      user_id: rpcResult.user_id,
+      task_id: rpcResult.task_id,
+      note_id: rpcResult.note_id,
+      completed: rpcResult.completed,
+      completed_at: rpcResult.completed_at,
+      completed_by: null,
+      completion_notes: null,
+      pinned: rpcResult.pinned,
+      pinned_at: rpcResult.pinned_at,
+      pin_order: rpcResult.pin_order,
+      archived: rpcResult.archived,
+      archived_at: null,
+      metadata: {},
+      created_at: rpcResult.created_at,
+      updated_at: rpcResult.updated_at
+    } as TaskState
   }
 
   /**
