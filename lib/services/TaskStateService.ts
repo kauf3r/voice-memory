@@ -7,6 +7,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 
+// Column selection for task_states queries (avoids SELECT *)
+const TASK_STATE_COLUMNS = 'id, user_id, task_id, note_id, completed, completed_at, completed_by, completion_notes, pinned, pinned_at, pin_order, archived, archived_at, metadata, created_at, updated_at'
+
 export interface TaskState {
   id: string
   user_id: string
@@ -68,7 +71,7 @@ export class TaskStateService {
     // Try to get existing state
     const { data: existing, error: selectError } = await this.supabase
       .from('task_states')
-      .select('*')
+      .select(TASK_STATE_COLUMNS)
       .eq('user_id', user_id)
       .eq('task_id', task_id)
       .maybeSingle()
@@ -93,7 +96,7 @@ export class TaskStateService {
         archived: false,
         metadata: {}
       })
-      .select()
+      .select(TASK_STATE_COLUMNS)
       .single()
 
     if (insertError) {
@@ -109,7 +112,7 @@ export class TaskStateService {
   async getPinnedTasks(user_id: string): Promise<TaskState[]> {
     const { data, error } = await this.supabase
       .from('task_states')
-      .select('*')
+      .select(TASK_STATE_COLUMNS)
       .eq('user_id', user_id)
       .eq('pinned', true)
       .order('pin_order', { ascending: true, nullsFirst: false })
@@ -131,7 +134,7 @@ export class TaskStateService {
     // Check current pin count
     const { count: currentPinCount, error: countError } = await this.supabase
       .from('task_states')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('user_id', user_id)
       .eq('pinned', true)
 
@@ -176,7 +179,7 @@ export class TaskStateService {
         updated_at: new Date().toISOString()
       })
       .eq('id', taskState.id)
-      .select()
+      .select(TASK_STATE_COLUMNS)
       .single()
 
     if (updateError) {
@@ -192,7 +195,7 @@ export class TaskStateService {
   async unpinTask(user_id: string, task_id: string): Promise<boolean> {
     const { data: taskState, error: selectError } = await this.supabase
       .from('task_states')
-      .select('*')
+      .select('id, pinned')
       .eq('user_id', user_id)
       .eq('task_id', task_id)
       .eq('pinned', true)
@@ -251,7 +254,7 @@ export class TaskStateService {
         updated_at: new Date().toISOString()
       })
       .eq('id', taskState.id)
-      .select()
+      .select(TASK_STATE_COLUMNS)
       .single()
 
     if (updateError) {
@@ -267,7 +270,7 @@ export class TaskStateService {
   async uncompleteTask(user_id: string, task_id: string): Promise<boolean> {
     const { data: taskState, error: selectError } = await this.supabase
       .from('task_states')
-      .select('*')
+      .select('id, completed')
       .eq('user_id', user_id)
       .eq('task_id', task_id)
       .eq('completed', true)
@@ -305,7 +308,7 @@ export class TaskStateService {
   async reorderPinnedTasks(user_id: string, task_id: string, new_order: number): Promise<void> {
     const { data: taskState, error: selectError } = await this.supabase
       .from('task_states')
-      .select('*')
+      .select('id, task_id, pinned, pin_order')
       .eq('user_id', user_id)
       .eq('task_id', task_id)
       .eq('pinned', true)
@@ -365,7 +368,7 @@ export class TaskStateService {
   async getTaskStates(filter: TaskStateFilter): Promise<TaskState[]> {
     let query = this.supabase
       .from('task_states')
-      .select('*')
+      .select(TASK_STATE_COLUMNS)
       .eq('user_id', filter.user_id)
 
     if (filter.completed !== undefined) {
@@ -433,7 +436,7 @@ export class TaskStateService {
         updated_at: new Date().toISOString()
       })
       .eq('id', taskState.id)
-      .select()
+      .select(TASK_STATE_COLUMNS)
       .single()
 
     if (updateError) {

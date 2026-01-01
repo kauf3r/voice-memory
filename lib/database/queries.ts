@@ -6,7 +6,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { TABLES, COLUMNS, FUNCTIONS, DATABASE_CONFIG, DATABASE_ERRORS } from './constants';
+import { TABLES, COLUMNS, FUNCTIONS, DATABASE_CONFIG, DATABASE_ERRORS, SELECT_COLUMNS } from './constants';
 
 // Type definitions for database operations
 export interface DatabaseResult<T> {
@@ -76,7 +76,7 @@ export class DatabaseService {
     try {
       let query = this.client
         .from(TABLES.NOTES)
-        .select('*')
+        .select(SELECT_COLUMNS.NOTES_FULL)
         .eq(COLUMNS.NOTES.ID, noteId);
 
       if (userId) {
@@ -116,7 +116,7 @@ export class DatabaseService {
 
       let query = this.client
         .from(TABLES.NOTES)
-        .select('*')
+        .select(SELECT_COLUMNS.NOTES_FULL)
         .eq(COLUMNS.NOTES.USER_ID, userId);
 
       // Filter by processing status
@@ -171,7 +171,7 @@ export class DatabaseService {
         .from(TABLES.NOTES)
         .update(updates)
         .eq(COLUMNS.NOTES.ID, noteId)
-        .select()
+        .select(SELECT_COLUMNS.NOTES_FULL)
         .single();
 
       if (error) {
@@ -189,13 +189,13 @@ export class DatabaseService {
   // ============================================================================
 
   async getTaskStatesByUser(
-    userId: string, 
+    userId: string,
     taskIds?: string[]
   ): Promise<DatabaseResult<TaskStateRecord[]>> {
     try {
       let query = this.client
         .from(TABLES.TASK_STATES)
-        .select('*')
+        .select(SELECT_COLUMNS.TASK_STATES_FULL)
         .eq(COLUMNS.TASK_STATES.USER_ID, userId);
 
       if (taskIds && taskIds.length > 0) {
@@ -233,7 +233,7 @@ export class DatabaseService {
         .upsert(updateData, {
           onConflict: `${COLUMNS.TASK_STATES.USER_ID},${COLUMNS.TASK_STATES.TASK_ID}`
         })
-        .select()
+        .select(SELECT_COLUMNS.TASK_STATES_FULL)
         .single();
 
       if (error) {
@@ -250,7 +250,7 @@ export class DatabaseService {
     try {
       const { data, error } = await this.client
         .from(TABLES.TASK_PINS)
-        .select('*')
+        .select('id, user_id, task_id, pinned_at, display_order')
         .eq(COLUMNS.TASK_PINS.USER_ID, userId)
         .order(COLUMNS.TASK_PINS.DISPLAY_ORDER, { ascending: true });
 
@@ -273,7 +273,7 @@ export class DatabaseService {
           [COLUMNS.TASK_PINS.TASK_ID]: taskId,
           [COLUMNS.TASK_PINS.PINNED_AT]: new Date().toISOString()
         })
-        .select()
+        .select('id, user_id, task_id, pinned_at, display_order')
         .single();
 
       if (error) {
@@ -371,7 +371,7 @@ export class DatabaseService {
     try {
       const { error } = await this.client
         .from(tableName)
-        .select('*')
+        .select('id')
         .limit(1);
 
       return !error;

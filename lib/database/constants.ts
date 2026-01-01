@@ -171,6 +171,29 @@ export const TABLE_VALIDATION = {
   ],
 } as const;
 
+// Pre-defined SELECT column lists for common queries (avoids SELECT *)
+export const SELECT_COLUMNS = {
+  // Full note record
+  NOTES_FULL: 'id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at, error_message, processing_attempts, last_error_at, processing_started_at',
+  // Note list view (no analysis blob)
+  NOTES_LIST: 'id, user_id, audio_url, duration_seconds, recorded_at, processed_at, created_at',
+  // Note with analysis
+  NOTES_WITH_ANALYSIS: 'id, user_id, transcription, analysis, recorded_at, processed_at, created_at',
+  // Minimal note (for existence checks)
+  NOTES_MINIMAL: 'id, user_id, processed_at',
+
+  // Task states
+  TASK_STATES_FULL: 'id, user_id, task_id, note_id, completed, completed_at, pinned, pinned_at, pin_order, archived, archived_at, created_at, updated_at',
+  TASK_STATES_PIN: 'id, user_id, task_id, note_id, pinned, pin_order, pinned_at',
+  TASK_STATES_COMPLETION: 'id, user_id, task_id, completed, completed_at',
+
+  // Project knowledge
+  PROJECT_KNOWLEDGE_FULL: 'id, user_id, content, updated_at',
+
+  // Processing errors
+  PROCESSING_ERRORS_FULL: 'id, note_id, error_message, error_type, stack_trace, processing_attempt, created_at',
+} as const;
+
 // Error messages for better debugging
 export const DATABASE_ERRORS = {
   TABLE_NOT_FOUND: (tableName: string) => `Table '${tableName}' does not exist. Check database schema.`,

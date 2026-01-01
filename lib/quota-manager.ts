@@ -61,7 +61,7 @@ export class QuotaManager {
         // Try a simple select to test table existence and accessibility
         const { error } = await this.getSupabase()
           .from(tableName)
-          .select('*')
+          .select('id')
           .limit(1)
           .maybeSingle()
         

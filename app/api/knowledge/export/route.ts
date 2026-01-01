@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
 
     const { data: projectKnowledge } = await supabase
       .from('project_knowledge')
-      .select('*')
+      .select('id, user_id, content, updated_at')
       .eq('user_id', user.id)
       .single()
 

@@ -41,7 +41,7 @@ export async function GET(
 
     const { data: note, error: dbError } = await supabase
       .from('notes')
-      .select('*')
+      .select('id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at')
       .eq('id', params.id)
       .eq('user_id', user.id)
       .single()
@@ -120,7 +120,7 @@ export async function PUT(
       })
       .eq('id', params.id)
       .eq('user_id', user.id)
-      .select()
+      .select('id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at')
       .single()
 
     if (dbError) {
