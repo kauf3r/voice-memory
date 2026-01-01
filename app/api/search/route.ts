@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { authenticateRequest } from '@/lib/supabase-server'
 import { CACHE_CONFIGS, getCachedProcessedContent } from '@/lib/cache/response-cache'
 import type { ExtendedAnalysis } from '@/lib/types/api'
 
@@ -19,35 +19,8 @@ interface SearchResult {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerClient()
-
-    // Try to get user from Authorization header first
-    let user = null
-    let authError = null
-
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-
-      if (error) {
-        authError = error
-      } else {
-        user = data?.user
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
-      }
-    }
-
-    // If no auth header or it failed, try to get from cookies
-    if (!user) {
-      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
-      user = cookieUser
-      authError = error
-    }
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError, client: supabase } = await authenticateRequest(request)
 
     if (authError || !user) {
       return NextResponse.json(

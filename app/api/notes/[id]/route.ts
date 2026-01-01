@@ -1,38 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { authenticateRequest } from '@/lib/supabase-server'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createServerClient()
-    
-    // Get auth token from header
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    let user = null
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (!error && data?.user) {
-        user = data.user
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
-      }
-    }
-    
-    // If no auth header, try cookies
-    if (!user) {
-      const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
-      user = cookieUser
-    }
-    
-    if (!user) {
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError, client: supabase } = await authenticateRequest(request)
+
+    if (authError || !user) {
       return NextResponse.json(
         { error: 'Authentication failed. Please log in.' },
         { status: 401 }
@@ -76,32 +53,10 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createServerClient()
-    
-    // Get auth token from header
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    let user = null
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (!error && data?.user) {
-        user = data.user
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
-      }
-    }
-    
-    // If no auth header, try cookies
-    if (!user) {
-      const { data: { user: cookieUser } } = await supabase.auth.getUser()
-      user = cookieUser
-    }
-    
-    if (!user) {
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError, client: supabase } = await authenticateRequest(request)
+
+    if (authError || !user) {
       return NextResponse.json(
         { error: 'Authentication failed. Please log in.' },
         { status: 401 }
@@ -153,32 +108,10 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createServerClient()
-    
-    // Get auth token from header
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    let user = null
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (!error && data?.user) {
-        user = data.user
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
-      }
-    }
-    
-    // If no auth header, try cookies
-    if (!user) {
-      const { data: { user: cookieUser } } = await supabase.auth.getUser()
-      user = cookieUser
-    }
-    
-    if (!user) {
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError, client: supabase } = await authenticateRequest(request)
+
+    if (authError || !user) {
       return NextResponse.json(
         { error: 'Authentication failed. Please log in.' },
         { status: 401 }

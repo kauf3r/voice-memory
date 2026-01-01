@@ -67,12 +67,15 @@ export async function createServerClient() {
 }
 
 // Authenticate user from Bearer token
+// Returns an authenticated client that can be used for RLS-protected operations
 export async function getAuthenticatedUser(token: string) {
   try {
     if (!token) {
       return { user: null, error: new Error('No token provided'), client: null }
     }
 
+    // Create a client with the token in the Authorization header
+    // This ensures all subsequent requests (including storage) use this token for RLS
     const client = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -99,4 +102,34 @@ export async function getAuthenticatedUser(token: string) {
   } catch (error) {
     return { user: null, error: error as Error, client: null }
   }
+}
+
+/**
+ * Authenticate a request using Bearer token or cookies
+ * Returns the authenticated user and a properly configured Supabase client
+ *
+ * This is the preferred method for API routes - it handles:
+ * 1. Bearer token authentication (Authorization header)
+ * 2. Cookie-based authentication (fallback)
+ * 3. Returns a client configured for RLS-protected operations
+ */
+export async function authenticateRequest(request: Request) {
+  const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
+
+  // Try Bearer token first
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7)
+    const { user, error, client } = await getAuthenticatedUser(token)
+
+    if (user && client) {
+      return { user, error: null, client }
+    }
+    // If Bearer token failed, fall through to cookie auth
+  }
+
+  // Fallback to cookie-based auth
+  const cookieClient = await createServerSupabaseClient()
+  const { data: { user }, error } = await cookieClient.auth.getUser()
+
+  return { user, error, client: cookieClient }
 }

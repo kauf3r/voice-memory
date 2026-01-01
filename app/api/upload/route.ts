@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { authenticateRequest } from '@/lib/supabase-server'
 import { uploadAudioFile } from '@/lib/storage'
 import { quotaManager } from '@/lib/quota-manager'
 import { validateFileUpload, checkUploadRateLimit } from '@/lib/security/file-validation'
@@ -10,46 +10,11 @@ export async function POST(request: NextRequest) {
     hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   })
-  
+
   try {
-    // Get authorization header - try both lowercase and capitalized
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    
-    const supabase = await createServerClient()
-    console.log('Supabase client created')
-    
-    // Try to get user from session
-    let user = null
-    let authError = null
-    
-    // First try to get user from the Authorization header
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      
-      // Use getUser with the token directly instead of setSession
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (error) {
-        console.error('Token authentication error:', error)
-        authError = error
-      } else {
-        user = data?.user
-        
-        // Set the session for storage operations
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token // Use access token as refresh token for now
-        })
-      }
-    }
-    
-    // If no auth header or it failed, try to get from cookies
-    if (!user) {
-      const { data, error } = await supabase.auth.getUser()
-      user = data?.user
-      authError = error
-    }
-    
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError, client: supabase } = await authenticateRequest(request)
+
     if (authError || !user) {
       console.error('Auth error:', authError)
       return NextResponse.json(
@@ -206,12 +171,13 @@ export async function POST(request: NextRequest) {
       
       const apiUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`
       
-      // Make internal API call to process the note
+      // Make internal API call to process the note using service key
+      const serviceKey = process.env.SUPABASE_SERVICE_KEY
       const processResponse = await fetch(`${apiUrl}/api/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authHeader?.replace('Bearer ', '')}`,
+          'Authorization': `Bearer ${serviceKey}`,
           'X-Service-Auth': 'true'
         },
         body: JSON.stringify({
