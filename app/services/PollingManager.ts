@@ -15,10 +15,14 @@ export interface PollingConfig {
   onToast: (message: string, type: 'success' | 'info' | 'error') => void
 }
 
-interface TaskPin {
+interface TaskState {
   id: string
   task_id: string
   user_id: string
+  note_id: string
+  completed: boolean
+  pinned: boolean
+  pin_order: number | null
   created_at: string
   updated_at: string
 }
@@ -77,10 +81,11 @@ export class PollingManager {
 
     try {
       const { data, error } = await supabase
-        .from('task_pins')
-        .select('*')
+        .from('task_states')
+        .select('id, task_id, user_id, note_id, completed, pinned, pin_order, created_at, updated_at')
         .eq('user_id', this.config.userId)
-        .order('created_at', { ascending: true })
+        .eq('pinned', true)
+        .order('pin_order', { ascending: true, nullsFirst: false })
 
       if (error) {
         throw error
@@ -105,7 +110,7 @@ export class PollingManager {
     }
   }
 
-  private processTaskPinsData(pins: TaskPin[]): void {
+  private processTaskPinsData(pins: TaskState[]): void {
     const currentPins = new Set(pins.map(pin => pin.task_id))
     
     // Check for new pins (added)
