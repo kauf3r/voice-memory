@@ -129,13 +129,13 @@ export class RealtimeManager {
       this.cleanupSubscription()
       
       this.subscription = supabase
-        .channel(`task_pins_changes_${Date.now()}`) // Unique channel name to avoid conflicts
+        .channel(`task_states_changes_${Date.now()}`) // Unique channel name to avoid conflicts
         .on(
           'postgres_changes',
           {
             event: '*', // Listen to all changes (INSERT, UPDATE, DELETE)
             schema: 'public',
-            table: 'task_pins',
+            table: 'task_states',
             filter: `user_id=eq.${this.userId}`
           },
           (payload) => this.handleRealtimeChange(payload)
@@ -149,37 +149,58 @@ export class RealtimeManager {
   private handleRealtimeChange(payload: any): void {
     if (this.isDestroyed) return
 
-    console.log('📌 Real-time pin change detected:', payload)
+    console.log('📌 Real-time task_states change detected:', payload)
     this.callbacks.onSyncTimeUpdate()
     this.callbacks.onError('') // Clear any previous errors
     this.reconnectAttempts = 0 // Reset retry count on successful message
-    
+
     // Handle different types of changes
     switch (payload.eventType) {
       case 'INSERT':
-        // Task was pinned
-        const newTaskId = payload.new.task_id
-        this.callbacks.onTaskPinned(newTaskId)
-        console.log('➕ Task pinned via real-time:', newTaskId)
-        this.callbacks.onToast('Task pinned!', 'success')
+        // New task state created - check if it's pinned
+        if (payload.new.pinned) {
+          const newTaskId = payload.new.task_id
+          this.callbacks.onTaskPinned(newTaskId)
+          console.log('➕ Task pinned via real-time:', newTaskId)
+          this.callbacks.onToast('Task pinned!', 'success')
+        }
         break
-        
+
       case 'DELETE':
-        // Task was unpinned
-        const removedTaskId = payload.old.task_id
-        this.callbacks.onTaskUnpinned(removedTaskId)
-        console.log('➖ Task unpinned via real-time:', removedTaskId)
-        this.callbacks.onToast('Task unpinned', 'info')
+        // Task state deleted - if it was pinned, notify unpin
+        if (payload.old.pinned) {
+          const removedTaskId = payload.old.task_id
+          this.callbacks.onTaskUnpinned(removedTaskId)
+          console.log('➖ Task unpinned via real-time:', removedTaskId)
+          this.callbacks.onToast('Task unpinned', 'info')
+        }
         break
-        
+
       case 'UPDATE':
-        // Pin was updated (order changes, etc.)
-        console.log('🔄 Pin updated via real-time')
-        this.callbacks.onPinUpdated()
+        // Task state updated - check for pin status changes
+        const oldPinned = payload.old?.pinned
+        const newPinned = payload.new?.pinned
+        const taskId = payload.new.task_id
+
+        if (!oldPinned && newPinned) {
+          // Task was just pinned
+          this.callbacks.onTaskPinned(taskId)
+          console.log('➕ Task pinned via real-time:', taskId)
+          this.callbacks.onToast('Task pinned!', 'success')
+        } else if (oldPinned && !newPinned) {
+          // Task was just unpinned
+          this.callbacks.onTaskUnpinned(taskId)
+          console.log('➖ Task unpinned via real-time:', taskId)
+          this.callbacks.onToast('Task unpinned', 'info')
+        } else if (newPinned) {
+          // Pin order or other pin-related update
+          console.log('🔄 Pin updated via real-time')
+          this.callbacks.onPinUpdated()
+        }
         break
-        
+
       default:
-        console.log('🤷 Unknown pin change event:', payload.eventType)
+        console.log('🤷 Unknown task_states change event:', payload.eventType)
     }
   }
 
