@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     // Build query based on filter type
     let query = supabase
       .from('notes')
-      .select('*')
+      .select('id, user_id, transcription, analysis, recorded_at, processed_at, created_at')
       .eq('user_id', user.id)
       .not('analysis', 'is', null)
       .order('recorded_at', { ascending: false })

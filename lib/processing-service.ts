@@ -225,7 +225,7 @@ class LegacyProcessingService {
       // Get the note with FOR UPDATE lock for additional safety
       let noteQuery = this.supabase
         .from('notes')
-        .select('*')
+        .select('id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at, error_message, processing_attempts, processing_started_at')
         .eq('id', noteId)
       
       if (userId) {

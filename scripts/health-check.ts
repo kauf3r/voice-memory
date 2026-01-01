@@ -98,7 +98,7 @@ async function healthCheck() {
       try {
         const { error } = await supabase
           .from(table)
-          .select('*')
+          .select('id')
           .limit(1)
         
         if (error) {

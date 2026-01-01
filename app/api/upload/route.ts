@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         duration_seconds: duration,
         recorded_at: new Date().toISOString(),
       })
-      .select()
+      .select('id, user_id, audio_url, duration_seconds, recorded_at, processed_at, created_at')
       .single()
 
     if (dbError) {

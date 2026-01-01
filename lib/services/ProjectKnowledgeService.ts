@@ -23,7 +23,7 @@ export class ProjectKnowledgeService {
 
     const { data: projectKnowledge, error: knowledgeError } = await this.dbClient
       .from('project_knowledge')
-      .select('*')
+      .select('id, user_id, content, updated_at')
       .eq('user_id', userId)
       .single()
 
@@ -57,7 +57,7 @@ export class ProjectKnowledgeService {
         content,
         updated_at: new Date().toISOString(),
       })
-      .select()
+      .select('id, user_id, content, updated_at')
       .single()
 
     if (updateError) {

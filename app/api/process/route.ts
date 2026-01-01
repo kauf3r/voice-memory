@@ -327,7 +327,7 @@ export async function POST(request: NextRequest) {
     // Get the note to verify it exists and get user_id for quota checking
     let noteQuery = supabase
       .from('notes')
-      .select('*')
+      .select('id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at, error_message, processing_attempts')
       .eq('id', noteId)
     
     // If we have a user, filter by user_id. If service auth, don't filter by user.
@@ -444,7 +444,7 @@ export async function POST(request: NextRequest) {
     // Get updated note
     const { data: updatedNote, error: updateError } = await supabase
       .from('notes')
-      .select('*')
+      .select('id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at')
       .eq('id', noteId)
       .single()
 

@@ -142,7 +142,7 @@ export async function POST(
         user_id: user.id,
         task_id: taskId
       })
-      .select()
+      .select('id, user_id, task_id, pinned_at, display_order')
       .single()
 
     if (pinError) {
@@ -268,7 +268,7 @@ export async function DELETE(
       .delete()
       .eq('user_id', user.id)
       .eq('task_id', taskId)
-      .select()
+      .select('id, user_id, task_id')
       .single()
 
     if (deleteError) {

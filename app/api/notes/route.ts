@@ -47,9 +47,12 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const search = searchParams.get('search')
 
+    // Select specific columns to avoid unnecessary data transfer
+    const noteColumns = 'id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at'
+
     let query = supabase
       .from('notes')
-      .select('*')
+      .select(noteColumns)
       .eq('user_id', user.id)
       .order('recorded_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -178,7 +181,7 @@ export async function POST(request: NextRequest) {
         analysis,
         recorded_at: new Date().toISOString(),
       })
-      .select()
+      .select('id, user_id, audio_url, duration_seconds, transcription, analysis, recorded_at, processed_at, created_at')
       .single()
 
     if (dbError) {
