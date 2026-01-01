@@ -1,0 +1,44 @@
+{
+  "documentation": {
+    "targets": {
+      "README.md": {
+        "sections": ["overview", "features", "installation", "usage", "configuration", "troubleshooting"],
+        "autoUpdate": true,
+        "preserveSections": ["badges", "license", "credits"]
+      },
+      "CLAUDE.md": {
+        "sections": ["overview", "architecture", "patterns", "conventions", "testing", "security"],
+        "autoUpdate": true,
+        "includePrivateNotes": false
+      },
+      "CLAUDE.local.md": {
+        "sections": ["personal-notes", "todo", "session-history"],
+        "autoUpdate": true,
+        "private": true
+      },
+      "API.md": {
+        "generateFrom": ["routes", "controllers", "openapi"],
+        "includeExamples": true,
+        "autoUpdate": true
+      }
+    },
+    "analysis": {
+      "detectNewFeatures": true,
+      "trackDependencies": true,
+      "analyzePerformance": true,
+      "checkSecurity": true,
+      "generateExamples": true
+    },
+    "formatting": {
+      "useEmoji": true,
+      "tableOfContents": true,
+      "codeHighlighting": true,
+      "lineLength": 80
+    },
+    "git": {
+      "autoCommit": false,
+      "commitMessage": "📚 Update documentation based on code changes",
+      "branch": "docs-update"
+    }
+  }
+}

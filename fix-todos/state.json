@@ -1,0 +1,73 @@
+{
+  "session_id": "fix-todos-2025-08-11",
+  "project": "voice-memory",
+  "total_todos": 8,
+  "resolved": 0,
+  "current_index": 0,
+  "todos": [
+    {
+      "id": 1,
+      "category": "Security",
+      "file": "lib/config/AppConfig.ts",
+      "line": 335,
+      "priority": "critical",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "category": "Error Handling",
+      "file": "app/api/process/route.ts",
+      "line": 72,
+      "priority": "high",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "category": "Performance",
+      "file": "app/services/RealtimeManager.ts",
+      "line": 75,
+      "priority": "high",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "category": "Database",
+      "file": "lib/database/queries.ts",
+      "line": 71,
+      "priority": "high",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "category": "Performance",
+      "file": "app/components/FilteredNotes.tsx",
+      "line": 21,
+      "priority": "medium",
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "category": "Performance",
+      "file": "lib/processing/ProcessingService.ts",
+      "line": 81,
+      "priority": "medium",
+      "status": "pending"
+    },
+    {
+      "id": 7,
+      "category": "Scalability",
+      "file": "lib/openai.ts",
+      "line": 257,
+      "priority": "medium",
+      "status": "pending"
+    },
+    {
+      "id": 8,
+      "category": "UX",
+      "file": "app/components/UploadButton.tsx",
+      "line": 97,
+      "priority": "low",
+      "status": "pending"
+    }
+  ]
+}
