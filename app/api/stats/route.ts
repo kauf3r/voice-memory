@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { authenticateRequest, getAuthenticatedUser } from '@/lib/supabase-server'
 import { processingService } from '@/lib/processing/ProcessingService'
 import { isAdminUser } from '@/lib/auth-utils'
 
@@ -121,38 +121,12 @@ async function getCachedGlobalStats() {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerClient()
     const url = new URL(request.url)
     const scope = url.searchParams.get('scope') || 'user'
-    
-    // Try to get user from Authorization header first
-    let user = null
-    let authError = null
-    
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (error) {
-        authError = error
-      } else {
-        user = data?.user
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: token
-        })
-      }
-    }
-    
-    // If no auth header or it failed, try to get from cookies
-    if (!user) {
-      const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
-      user = cookieUser
-      authError = error
-    }
-    
+
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError } = await authenticateRequest(request)
+
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -208,38 +182,28 @@ export async function GET(request: NextRequest) {
 // Optional: Allow cache invalidation via DELETE request
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createServerClient()
-    
-    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data, error } = await supabase.auth.getUser(token)
-      
-      if (error || !data?.user) {
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        )
-      }
+    // Authenticate the request (handles both Bearer token and cookie auth)
+    const { user, error: authError } = await authenticateRequest(request)
 
-      // Clear cache for this user and global cache if admin
-      const cacheKey = `stats_${data.user.id}`
-      statsCache.delete(cacheKey)
-      
-      if (isAdminUser(data.user)) {
-        globalStatsCache.delete('global_stats')
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Cache cleared'
-      })
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
     }
 
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+    // Clear cache for this user and global cache if admin
+    const cacheKey = `stats_${user.id}`
+    statsCache.delete(cacheKey)
+
+    if (isAdminUser(user)) {
+      globalStatsCache.delete('global_stats')
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Cache cleared'
+    })
 
   } catch (error) {
     console.error('Cache clear API error:', error)

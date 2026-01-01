@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
+import { createServerClient, getAuthenticatedUser } from '@/lib/supabase-server'
 import { processingService } from '@/lib/processing/ProcessingService'
 import { isAuthorizedCronRequest, isVercelCronRequest, getAuthMethod } from '@/lib/cron-auth'
 
@@ -35,34 +35,24 @@ async function authenticateRequest(request: NextRequest): Promise<{
   }
   
   // User request - perform authentication
-  const supabase = await createServerClient()
-  
-  // Try to get user from Authorization header first
   let user = null
-  let authError = null
-  
+
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.replace('Bearer ', '')
-    const { data, error } = await supabase.auth.getUser(token)
-    
-    if (error) {
-      authError = error
-    } else {
-      user = data?.user
-      // Set the session for this request
-      await supabase.auth.setSession({
-        access_token: token,
-        refresh_token: token
-      })
+    // Use getAuthenticatedUser which creates a properly configured client
+    const authResult = await getAuthenticatedUser(token)
+
+    if (!authResult.error && authResult.user) {
+      user = authResult.user
     }
   }
-  
+
   // If no auth header or it failed, try to get from cookies
   if (!user) {
-    const { data: { user: cookieUser }, error } = await supabase.auth.getUser()
+    const supabase = await createServerClient()
+    const { data: { user: cookieUser } } = await supabase.auth.getUser()
     user = cookieUser
-    authError = error
   }
   
   // Check for service key authentication (for admin operations)

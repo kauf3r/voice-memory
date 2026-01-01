@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, createServiceClient } from '@/lib/supabase-server'
+import { createServerClient, createServiceClient, getAuthenticatedUser } from '@/lib/supabase-server'
 import { processingService } from '@/lib/processing/ProcessingService'
 import { quotaManager } from '@/lib/quota-manager'
 import type { ErrorResponse, ErrorType, UsageInfo, RateLimitInfo } from '@/lib/types/api'
@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
 
     // Use service client for service auth (bypasses RLS), otherwise use regular client
     console.log('🔧 Creating Supabase client...')
-    const supabase = isServiceAuth ? createServiceClient() : await createServerClient()
+    let supabase = isServiceAuth ? createServiceClient() : await createServerClient()
 
     // Try to get user from Authorization header first
     console.log('🔑 Authenticating user...')
@@ -280,19 +280,17 @@ export async function POST(request: NextRequest) {
 
     if (!isServiceAuth && authHeader && authHeader.startsWith('Bearer ')) {
       console.log('🎫 Using Bearer token authentication')
-      const { data, error } = await supabase.auth.getUser(token!)
+      // Use getAuthenticatedUser which creates a properly configured client
+      const authResult = await getAuthenticatedUser(token!)
 
-      if (error) {
-        console.error('❌ Bearer token authentication failed:', error)
-        authError = error
+      if (authResult.error) {
+        console.error('❌ Bearer token authentication failed:', authResult.error)
+        authError = authResult.error
       } else {
-        user = data?.user
+        user = authResult.user
+        // Use the properly authenticated client for subsequent operations
+        supabase = authResult.client!
         console.log('✅ Bearer token authentication successful:', { userId: user?.id })
-        // Set the session for this request
-        await supabase.auth.setSession({
-          access_token: token!,
-          refresh_token: token!
-        })
       }
     }
 
