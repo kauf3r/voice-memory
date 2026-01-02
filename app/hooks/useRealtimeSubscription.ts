@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { RealtimeManager, type RealtimeCallbacks } from '@/app/services/RealtimeManager'
 import type { ConnectionStatus } from './useConnectionStatus'
+import { createRealtimeInvalidationCallbacks } from '@/lib/cache/CacheInvalidationManager'
 
 interface UseRealtimeSubscriptionProps {
   user: any
@@ -32,24 +33,35 @@ export function useRealtimeSubscription({
       return
     }
 
+    // Get cache invalidation callbacks for this user
+    const cacheInvalidation = createRealtimeInvalidationCallbacks(user.id)
+
     const callbacks: RealtimeCallbacks = {
       onConnectionStatusChange: updateConnectionStatus,
       onError: setError,
       onSyncTimeUpdate: updateSyncTime,
       onTaskPinned: (taskId: string) => {
+        // Update local state
         setPinnedTaskIds(prev => {
           if (!prev.includes(taskId)) {
             return [...prev, taskId]
           }
           return prev
         })
+        // Invalidate relevant caches
+        cacheInvalidation.onTaskPinned(taskId)
       },
       onTaskUnpinned: (taskId: string) => {
+        // Update local state
         setPinnedTaskIds(prev => prev.filter(id => id !== taskId))
+        // Invalidate relevant caches
+        cacheInvalidation.onTaskUnpinned(taskId)
       },
       onPinUpdated: () => {
         // Debounced refresh for order changes
         setTimeout(() => refreshPinnedTasks(), 500)
+        // Invalidate relevant caches
+        cacheInvalidation.onPinUpdated()
       },
       onToast: showToast
     }

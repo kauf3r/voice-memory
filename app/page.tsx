@@ -14,6 +14,7 @@ import ConnectionStatusIndicator from './components/ConnectionStatusIndicator'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useInfiniteScroll } from '@/lib/hooks/use-intersection-observer'
 import { useMemo, useCallback, useEffect } from 'react'
+import { MutationInvalidators } from '@/lib/cache/CacheInvalidationManager'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -44,14 +45,22 @@ export default function Home() {
     return { processingCount, processedCount }
   }, [notes])
 
-  // Optimized event handlers
+  // Optimized event handlers with cache invalidation
   const handleUploadComplete = useCallback(async () => {
+    // Invalidate caches when new note is uploaded
+    if (user?.id) {
+      MutationInvalidators.afterNoteUpload(user.id)
+    }
     await refresh()
-  }, [refresh])
+  }, [refresh, user?.id])
 
   const handleNoteDelete = useCallback(async () => {
+    // Invalidate caches when note is deleted
+    if (user?.id) {
+      MutationInvalidators.afterNoteDelete(user.id, '')
+    }
     await refresh()
-  }, [refresh])
+  }, [refresh, user?.id])
 
   // Memoized render function for note cards
   const renderNoteCard = useCallback((note: any, index: number) => (
