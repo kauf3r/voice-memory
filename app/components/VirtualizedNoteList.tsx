@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { Note } from '@/lib/types'
 
 interface VirtualizedNoteListProps {
@@ -10,67 +10,107 @@ interface VirtualizedNoteListProps {
   itemHeight?: number
   containerHeight?: number
   enableVirtualization?: boolean
+  overscan?: number
 }
 
-export default function VirtualizedNoteList({ 
-  notes, 
-  className = '', 
+interface VisibilityState {
+  [key: string]: boolean
+}
+
+export default function VirtualizedNoteList({
+  notes,
+  className = '',
   children,
   itemHeight = 400,
   containerHeight = 600,
-  enableVirtualization = false
+  enableVirtualization = true,
+  overscan = 3
 }: VirtualizedNoteListProps) {
-  const [showAll, setShowAll] = useState(false)
+  const [visibleItems, setVisibleItems] = useState<VisibilityState>({})
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  // Always call hooks consistently
-  const renderItem = useCallback((note: Note, index: number) => {
-    return (
-      <div key={note.id} className="mb-4">
-        {children(note, index)}
-      </div>
+  // Set up IntersectionObserver for virtualization
+  useEffect(() => {
+    if (!enableVirtualization) return
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        const updates: VisibilityState = {}
+        entries.forEach((entry) => {
+          const noteId = entry.target.getAttribute('data-note-id')
+          if (noteId) {
+            updates[noteId] = entry.isIntersecting
+          }
+        })
+        setVisibleItems((prev) => ({ ...prev, ...updates }))
+      },
+      {
+        rootMargin: `${itemHeight * overscan}px 0px`,
+        threshold: 0,
+      }
     )
-  }, [children])
 
-  // Calculate display notes
-  const displayNotes = useMemo(() => {
-    return showAll ? notes : notes.slice(0, 50)
-  }, [notes, showAll])
+    // Observe all current items
+    itemRefs.current.forEach((element) => {
+      observerRef.current?.observe(element)
+    })
 
-  // Simple rendering only - disable virtualization to prevent hook issues
+    return () => {
+      observerRef.current?.disconnect()
+    }
+  }, [enableVirtualization, itemHeight, overscan])
+
+  // Register item ref for observation
+  const setItemRef = useCallback((noteId: string, element: HTMLDivElement | null) => {
+    if (element) {
+      itemRefs.current.set(noteId, element)
+      observerRef.current?.observe(element)
+    } else {
+      const existing = itemRefs.current.get(noteId)
+      if (existing) {
+        observerRef.current?.unobserve(existing)
+        itemRefs.current.delete(noteId)
+      }
+    }
+  }, [])
+
+  // Determine which items should render content
+  const shouldRenderContent = useCallback((noteId: string, index: number): boolean => {
+    if (!enableVirtualization) return true
+    // Always render first few items immediately
+    if (index < overscan) return true
+    // Render if visible or not yet observed (default to visible for SSR)
+    return visibleItems[noteId] !== false
+  }, [enableVirtualization, overscan, visibleItems])
+
+  // Render placeholder for off-screen items
+  const renderPlaceholder = useMemo(() => (
+    <div
+      className="bg-gray-800/30 rounded-lg animate-pulse"
+      style={{ height: itemHeight, minHeight: itemHeight }}
+      aria-hidden="true"
+    />
+  ), [itemHeight])
+
   return (
     <div className={className}>
       <div className="space-y-4">
-        {displayNotes.map((note, index) => (
-          <div key={note.id}>
-            {children(note, index)}
+        {notes.map((note, index) => (
+          <div
+            key={note.id}
+            ref={(el) => setItemRef(note.id, el)}
+            data-note-id={note.id}
+            style={{ minHeight: enableVirtualization ? itemHeight : undefined }}
+          >
+            {shouldRenderContent(note.id, index) ? (
+              children(note, index)
+            ) : (
+              renderPlaceholder
+            )}
           </div>
         ))}
       </div>
-      
-      {notes.length > 50 && !showAll && (
-        <div className="text-center py-8">
-          <p className="text-gray-500 text-sm mb-4">
-            Showing {displayNotes.length} of {notes.length} notes
-          </p>
-          <button 
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            onClick={() => setShowAll(true)}
-          >
-            Show All Notes ({notes.length})
-          </button>
-        </div>
-      )}
-
-      {showAll && notes.length > 50 && (
-        <div className="text-center py-4">
-          <button 
-            className="text-blue-600 hover:text-blue-700 text-sm underline"
-            onClick={() => setShowAll(false)}
-          >
-            Show Less
-          </button>
-        </div>
-      )}
     </div>
   )
 }
