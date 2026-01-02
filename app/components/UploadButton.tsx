@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useAuth } from './AuthProvider'
-import { uploadAudioFile } from '@/lib/storage'
 import { supabase } from '@/lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
 import ErrorMessage from './ErrorMessage'
@@ -85,6 +84,102 @@ export default function UploadButton({
     return null
   }, [])
 
+  /**
+   * Upload file using signed URL flow to bypass Vercel body size limits.
+   * Flow: Get signed URL -> Upload directly to Supabase Storage -> Create note record
+   */
+  const uploadWithSignedUrl = useCallback(async (file: File, accessToken: string, fileId: string): Promise<any> => {
+    // Step 1: Get signed upload URL from our API
+    console.log('Step 1: Getting signed upload URL...')
+    const signedUrlResponse = await fetch(`/api/upload/signed-url?filename=${encodeURIComponent(file.name)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    })
+
+    if (!signedUrlResponse.ok) {
+      const errorData = await signedUrlResponse.json().catch(() => ({}))
+      throw new Error(errorData.error || 'Failed to get upload URL')
+    }
+
+    const { signedUrl, token, filePath, publicUrl } = await signedUrlResponse.json()
+    console.log('Got signed URL for path:', filePath)
+
+    // Step 2: Upload directly to Supabase Storage with progress tracking
+    console.log('Step 2: Uploading directly to Supabase Storage...')
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+
+      activeUploadsRef.current.add(xhr)
+      const cleanup = () => activeUploadsRef.current.delete(xhr)
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          // Reserve last 5% for note creation
+          const progress = (e.loaded / e.total) * 95
+          setUploadProgress(prev => ({ ...prev, [fileId]: Math.min(progress, 95) }))
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        cleanup()
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log('Direct upload to storage successful')
+          resolve()
+        } else {
+          console.error('Storage upload failed:', xhr.status, xhr.responseText)
+          reject(new Error(`Storage upload failed: ${xhr.status}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        cleanup()
+        reject(new Error('Network error during storage upload'))
+      })
+
+      xhr.addEventListener('timeout', () => {
+        cleanup()
+        reject(new Error('Storage upload timed out'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        cleanup()
+        reject(new Error('Upload was cancelled'))
+      })
+
+      xhr.timeout = 300000 // 5 minutes for large files
+      xhr.open('PUT', signedUrl)
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.setRequestHeader('Content-Type', file.type || 'audio/mpeg')
+      xhr.send(file)
+    })
+
+    // Step 3: Create note record via our API
+    console.log('Step 3: Creating note record...')
+    setUploadProgress(prev => ({ ...prev, [fileId]: 98 }))
+
+    const noteResponse = await fetch('/api/upload/create-note', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        audioUrl: publicUrl,
+        filePath: filePath,
+        fileSize: file.size
+      })
+    })
+
+    if (!noteResponse.ok) {
+      const errorData = await noteResponse.json().catch(() => ({}))
+      throw new Error(errorData.error || 'Failed to create note record')
+    }
+
+    const result = await noteResponse.json()
+    console.log('Note created successfully:', result.note?.id)
+
+    return result
+  }, [])
+
   const uploadFileChunked = useCallback(async (file: File) => {
     if (!user) {
       setError('You must be logged in to upload files.')
@@ -135,14 +230,14 @@ export default function UploadButton({
         }
       }
 
-      console.log('Starting chunked upload for:', fileToUpload.name, `(${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB)`)
+      console.log('Starting signed URL upload for:', fileToUpload.name, `(${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB)`)
 
-      // Use direct upload with real progress tracking
-      const result = await uploadFileDirectly(fileToUpload, session.access_token, fileId)
+      // Use signed URL upload flow (bypasses Vercel body size limits)
+      const result = await uploadWithSignedUrl(fileToUpload, session.access_token, fileId)
       if (result.success) {
-        console.log('Upload completed successfully, URL:', result.url)
+        console.log('Upload completed successfully, note ID:', result.note?.id)
         onUploadComplete?.()
-        
+
         // Clean up progress after a delay
         setTimeout(() => {
           setUploadProgress(prev => {
@@ -152,7 +247,7 @@ export default function UploadButton({
           })
         }, 2000)
       }
-      
+
     } catch (error) {
       console.error('Upload error caught:', error)
       setUploadProgress(prev => {
@@ -162,112 +257,7 @@ export default function UploadButton({
       })
       setError(error instanceof Error ? error.message : 'Upload failed')
     }
-  }, [user, validateFile, onUploadStart, onUploadComplete])
-  
-  const uploadFileDirectly = useCallback(async (file: File, accessToken: string, fileId: string, retryCount = 0) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    // Create XMLHttpRequest for real progress tracking
-    return new Promise<any>((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      
-      // Track this upload
-      activeUploadsRef.current.add(xhr)
-      
-      // Cleanup function
-      const cleanup = () => {
-        activeUploadsRef.current.delete(xhr)
-      }
-      
-      // Track upload progress
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const progress = (e.loaded / e.total) * 100
-          setUploadProgress(prev => ({ ...prev, [fileId]: Math.min(progress, 99) }))
-        }
-      })
-      
-      xhr.addEventListener('load', () => {
-        cleanup()
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const result = JSON.parse(xhr.responseText)
-            resolve(result)
-          } catch (error) {
-            reject(new Error('Server response was invalid'))
-          }
-        } else {
-          let errorData
-          try {
-            errorData = JSON.parse(xhr.responseText)
-          } catch {
-            errorData = { error: 'Upload failed' }
-          }
-          
-          if (xhr.status === 413) {
-            reject(new Error(
-              errorData.details || 
-              `File too large. Maximum size is ${errorData.maxSizeMB || 25}MB.`
-            ))
-          } else if (xhr.status === 507) {
-            reject(new Error(
-              errorData.details || 
-              `Storage quota exceeded.`
-            ))
-          } else {
-            reject(new Error(errorData.error || 'Upload failed'))
-          }
-        }
-      })
-      
-      xhr.addEventListener('error', async () => {
-        cleanup()
-        // Retry on network errors up to 3 times
-        if (retryCount < 3) {
-          console.log(`Network error, retrying upload (attempt ${retryCount + 2}/4)...`)
-          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // Exponential backoff
-          try {
-            const result = await uploadFileDirectly(file, accessToken, fileId, retryCount + 1)
-            resolve(result)
-          } catch (retryError) {
-            reject(retryError)
-          }
-        } else {
-          reject(new Error('Network error during upload (after 3 retries)'))
-        }
-      })
-      
-      xhr.addEventListener('timeout', async () => {
-        cleanup()
-        // Retry on timeout up to 2 times with longer timeout
-        if (retryCount < 2) {
-          console.log(`Upload timeout, retrying with longer timeout (attempt ${retryCount + 2}/3)...`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          try {
-            const result = await uploadFileDirectly(file, accessToken, fileId, retryCount + 1)
-            resolve(result)
-          } catch (retryError) {
-            reject(retryError)
-          }
-        } else {
-          reject(new Error('Upload timed out after multiple attempts. The file may be too large or your connection may be slow.'))
-        }
-      })
-      
-      xhr.addEventListener('abort', () => {
-        cleanup()
-        reject(new Error('Upload was cancelled'))
-      })
-      
-      xhr.timeout = retryCount > 0 ? 180000 : 120000 // Longer timeout for retries
-      xhr.open('POST', '/api/upload')
-      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
-      xhr.send(formData)
-    })
-  }, [])
-  
-  const uploadFile = uploadFileDirectly
+  }, [user, validateFile, onUploadStart, onUploadComplete, uploadWithSignedUrl])
 
   const handleFiles = useCallback(async (files: FileList) => {
     setIsUploading(true)
