@@ -63,29 +63,14 @@ export class TaskStateService {
   constructor(private supabase: SupabaseClient) {}
 
   /**
-   * Get or create a task state for a specific task
+   * Get or create a task state for a specific task (atomic operation)
+   * Uses INSERT with conflict handling to prevent race conditions
    */
   async getOrCreateTaskState(params: PinTaskParams): Promise<TaskState> {
     const { user_id, task_id, note_id } = params
 
-    // Try to get existing state
-    const { data: existing, error: selectError } = await this.supabase
-      .from('task_states')
-      .select(TASK_STATE_COLUMNS)
-      .eq('user_id', user_id)
-      .eq('task_id', task_id)
-      .maybeSingle()
-
-    if (selectError) {
-      throw new Error(`Failed to query task state: ${selectError.message}`)
-    }
-
-    if (existing) {
-      return existing as TaskState
-    }
-
-    // Create new state
-    const { data: created, error: insertError } = await this.supabase
+    // Try to insert first (optimistic approach)
+    const { data: inserted, error: insertError } = await this.supabase
       .from('task_states')
       .insert({
         user_id,
@@ -99,11 +84,34 @@ export class TaskStateService {
       .select(TASK_STATE_COLUMNS)
       .single()
 
-    if (insertError) {
-      throw new Error(`Failed to create task state: ${insertError.message}`)
+    // If insert succeeded, return the new row
+    if (!insertError && inserted) {
+      return inserted as TaskState
     }
 
-    return created as TaskState
+    // If conflict (row already exists), fetch the existing row
+    // Postgres error code 23505 = unique_violation
+    if (insertError?.code === '23505') {
+      const { data: existing, error: selectError } = await this.supabase
+        .from('task_states')
+        .select(TASK_STATE_COLUMNS)
+        .eq('user_id', user_id)
+        .eq('task_id', task_id)
+        .single()
+
+      if (selectError) {
+        throw new Error(`Failed to fetch existing task state: ${selectError.message}`)
+      }
+
+      if (!existing) {
+        throw new Error('Task state conflict but row not found')
+      }
+
+      return existing as TaskState
+    }
+
+    // Some other error occurred
+    throw new Error(`Failed to create task state: ${insertError?.message}`)
   }
 
   /**
