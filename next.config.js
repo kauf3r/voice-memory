@@ -8,6 +8,9 @@ const nextConfig = {
   // Enable experimental features for better performance
   experimental: {
     // optimizeCss: true, // Disabled due to CSS compilation error
+    serverActions: {
+      bodySizeLimit: '25mb',
+    },
   },
 
   // Image optimization
