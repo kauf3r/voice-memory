@@ -5,6 +5,10 @@ import { quotaManager } from '@/lib/quota-manager'
 import type { ErrorResponse, ErrorType, UsageInfo, RateLimitInfo } from '@/lib/types/api'
 import { retryOpenAIOperation, retryQueue, circuitBreaker } from '@/lib/utils/retry'
 
+// Route segment config - extend timeout for audio processing
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300 // 5 minutes for Whisper + GPT-4 processing
+
 // Error categorization and mapping
 enum ErrorTypeEnum {
   VALIDATION = 'validation',
