@@ -51,10 +51,10 @@ export class RealtimeManager {
     this.healthCheckIntervalMs = config.healthCheckInterval ?? 30000 // 30 seconds
     this.callbacks = callbacks
     
-    // Initialize polling manager
+    // Initialize polling manager with adaptive backoff
     this.pollingManager = new PollingManager({
       userId: this.userId,
-      intervalMs: 5000, // Poll every 5 seconds
+      baseIntervalMs: 5000, // Start at 5 seconds, increases with backoff
       maxRetries: 3,
       onConnectionStatusChange: callbacks.onConnectionStatusChange,
       onError: callbacks.onError,
