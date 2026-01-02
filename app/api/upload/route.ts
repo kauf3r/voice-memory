@@ -4,6 +4,10 @@ import { uploadAudioFile } from '@/lib/storage'
 import { quotaManager } from '@/lib/quota-manager'
 import { validateFileUpload, checkUploadRateLimit } from '@/lib/security/file-validation'
 
+// Route segment config for large file uploads
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export async function POST(request: NextRequest) {
   console.log('Upload API called')
   console.log('ENV CHECK:', {
