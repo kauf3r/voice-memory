@@ -119,10 +119,24 @@ export class AudioProcessorService implements AudioProcessor {
           finalMimeType = videoProcessingResult.audioMimeType
         }
       }
-      
+
+      // Step 4: Compress large audio files for reliable upload in serverless environment
+      console.log(`🔧 Step 4: Checking if compression needed (${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB)...`)
+      const compressionResult = await this.formatNormalizer.compressForWhisperUpload(
+        audioBuffer,
+        finalMimeType,
+        `${noteId}.${extension}`
+      )
+
+      if (compressionResult.success && compressionResult.compressedSize < compressionResult.originalSize) {
+        audioBuffer = compressionResult.buffer
+        finalMimeType = compressionResult.mimeType
+        console.log(`✅ Audio compressed for upload: ${(compressionResult.originalSize / 1024 / 1024).toFixed(2)}MB → ${(compressionResult.compressedSize / 1024 / 1024).toFixed(2)}MB`)
+      }
+
       // Create audio file for transcription
       const audioFile = createServerFileFromBuffer(audioBuffer, `${noteId}.${extension}`, finalMimeType)
-      
+
       console.log(`Sending to Whisper API: ${audioFile.name} (${audioFile.type}, ${audioFile.size} bytes)`)
       
       // Transcribe audio
