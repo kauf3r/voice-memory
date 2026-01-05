@@ -77,3 +77,4 @@ backup-*
 *-backup-*
 dev.log
 *.log
+.playwright-mcp/
