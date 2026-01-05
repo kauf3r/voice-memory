@@ -177,13 +177,52 @@ export class AnalysisProcessorService implements AnalysisProcessor {
         return []
       }
 
-      return analysis.topics.map((topic: any) => 
+      return analysis.topics.map((topic: any) =>
         typeof topic === 'string' ? topic : topic.name || topic.topic || ''
       ).filter(Boolean)
-      
+
     } catch (error) {
       console.warn('Error extracting topics from analysis:', error)
       return []
+    }
+  }
+
+  /**
+   * Save open loops (decisions and waiting-for items) from V2 analysis
+   */
+  async saveOpenLoops(noteId: string, userId: string, analysis: any): Promise<void> {
+    try {
+      const openLoops = analysis?.openLoops
+      if (!openLoops || !Array.isArray(openLoops) || openLoops.length === 0) {
+        return
+      }
+
+      const records = openLoops
+        .filter((loop: any) => loop.type && loop.description)
+        .map((loop: any) => ({
+          note_id: noteId,
+          user_id: userId,
+          type: loop.type,
+          description: loop.description,
+          resolved: false
+        }))
+
+      if (records.length === 0) {
+        return
+      }
+
+      const { error } = await this.client
+        .from('open_loops')
+        .insert(records)
+
+      if (error) {
+        console.warn(`Failed to save open loops for note ${noteId}:`, error)
+      } else {
+        console.log(`Saved ${records.length} open loops for note ${noteId}`)
+      }
+    } catch (error) {
+      console.warn(`Error saving open loops for note ${noteId}:`, error)
+      // Don't fail the whole job for this
     }
   }
 }
