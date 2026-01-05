@@ -60,9 +60,9 @@ export function useNoteContent(note: Note) {
   const theOneThing = useMemo(() => {
     const raw = note.analysis?.theOneThing
     if (!raw) return null
-    // Handle both string (legacy) and object (new format) for theOneThing
+    // Handle both string (legacy V1) and object (V2 format) for theOneThing
     if (typeof raw === 'string') return raw
-    if (typeof raw === 'object' && raw.description) return raw.description
+    if (typeof raw === 'object' && raw.task) return raw.task
     return null
   }, [note.analysis])
 
