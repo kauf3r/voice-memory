@@ -18,7 +18,8 @@ function normalizeAnalysis(analysis: any): {
   topic: string
   mood: string
   summary: string
-  theOneThing: string | null
+  theOneThing: { task: string; why: string } | null
+  noteType: string | null
   people: any[]
 } {
   // Normalize tasks - handle both array (new) and object (legacy) formats
@@ -62,20 +63,39 @@ function normalizeAnalysis(analysis: any): {
   // Summary and theOneThing
   const summary = analysis.summary || analysis.keyIdeas?.[0] || ''
 
-  // theOneThing can be a string (legacy) or object (new format with domain, description, whyImportant)
-  let theOneThing: string | null = null
+  // theOneThing can be:
+  // - V1 string: "Do the thing"
+  // - V2 object: { task: "Do the thing", why: "Because it matters" }
+  // - Legacy object: { description: "...", whyImportant: "..." }
+  let theOneThing: { task: string; why: string } | null = null
   if (analysis.theOneThing) {
     if (typeof analysis.theOneThing === 'string') {
-      theOneThing = analysis.theOneThing
-    } else if (typeof analysis.theOneThing === 'object' && analysis.theOneThing.description) {
-      theOneThing = analysis.theOneThing.description
+      // V1 format: string only
+      theOneThing = { task: analysis.theOneThing, why: '' }
+    } else if (typeof analysis.theOneThing === 'object') {
+      if (analysis.theOneThing.task) {
+        // V2 format: { task, why }
+        theOneThing = {
+          task: analysis.theOneThing.task,
+          why: analysis.theOneThing.why || ''
+        }
+      } else if (analysis.theOneThing.description) {
+        // Legacy format: { description, whyImportant }
+        theOneThing = {
+          task: analysis.theOneThing.description,
+          why: analysis.theOneThing.whyImportant || ''
+        }
+      }
     }
   }
+
+  // noteType (V2 only)
+  const noteType = analysis.noteType || null
 
   // People
   const people = analysis.people || analysis.mentionedPeople || []
 
-  return { tasks, draftMessages, topic, mood, summary, theOneThing, people }
+  return { tasks, draftMessages, topic, mood, summary, theOneThing, noteType, people }
 }
 
 export default function AnalysisView({
@@ -102,6 +122,17 @@ export default function AnalysisView({
       case 'positive': return 'bg-green-100 text-green-800 border-green-200'
       case 'negative': return 'bg-red-100 text-red-800 border-red-200'
       default: return 'bg-gray-100 text-gray-800 border-gray-200'
+    }
+  }
+
+  const getNoteTypeEmoji = (type: string) => {
+    switch (type) {
+      case 'brain_dump': return '🧠'
+      case 'meeting_debrief': return '🤝'
+      case 'planning': return '📋'
+      case 'venting': return '💨'
+      case 'idea_capture': return '💡'
+      default: return '📝'
     }
   }
 
@@ -190,6 +221,16 @@ export default function AnalysisView({
           <div className="text-sm font-medium text-blue-800">{normalized.topic || 'General'}</div>
         </div>
 
+        {/* Note Type */}
+        {normalized.noteType && (
+          <div className="bg-indigo-50 rounded-lg p-4 text-center border border-indigo-200">
+            <div className="text-2xl mb-1">{getNoteTypeEmoji(normalized.noteType)}</div>
+            <div className="text-sm font-medium text-indigo-800 capitalize">
+              {normalized.noteType.replace('_', ' ')}
+            </div>
+          </div>
+        )}
+
         {/* Tasks Count */}
         <div className="bg-purple-50 rounded-lg p-4 text-center border border-purple-200">
           <div className="text-2xl font-bold text-purple-600">{normalized.tasks.length}</div>
@@ -213,8 +254,13 @@ export default function AnalysisView({
                 The One Thing
               </h3>
               <p className="text-xl font-medium text-yellow-900">
-                {normalized.theOneThing}
+                {normalized.theOneThing.task}
               </p>
+              {normalized.theOneThing.why && (
+                <p className="text-sm text-yellow-700 mt-2">
+                  {normalized.theOneThing.why}
+                </p>
+              )}
             </div>
           </div>
         </div>

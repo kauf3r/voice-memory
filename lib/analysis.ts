@@ -99,13 +99,99 @@ Output theOneThing: "Negotiate rate increase to market level"
 Include empty arrays [] for categories with no data. Use null for theOneThing if no clear priority.
 `
 
+/**
+ * V2 Analysis Prompt - Enhanced ADHD-optimized extraction
+ *
+ * Enhancements over V1:
+ * - theOneThing now includes task + why explanation
+ * - Tasks include optional: estimatedMinutes, energy level, context tags
+ * - New openLoops array for decisions pending and waiting-for items
+ * - noteType classification for better organization
+ */
+export const ANALYSIS_PROMPT_V2 = `
+Analyze this voice note for an ADHD brain. Extract actionable insights with physical next actions.
+
+Recording Date: {recordingDate}
+
+Transcription:
+{transcription}
+
+Return ONLY valid JSON with this EXACT structure:
+
+{
+  "summary": "One sentence summarizing the main point",
+  "mood": "positive|neutral|negative",
+  "topic": "Primary topic in 2-4 words",
+  "noteType": "brain_dump|meeting_debrief|planning|venting|idea_capture",
+
+  "theOneThing": {
+    "task": "The SINGLE most important physical action. Format: 'Open X and do Y'",
+    "why": "One sentence on why this matters most right now"
+  },
+
+  "tasks": [
+    {
+      "title": "Physical action starting with verb (Open, Call, Send, Walk to...)",
+      "urgency": "NOW|SOON|LATER",
+      "domain": "WORK|PERS|PROJ",
+      "dueDate": "Date if mentioned, otherwise null",
+      "assignedTo": "Person's name if delegated, otherwise null",
+      "context": "Brief context from recording",
+      "estimatedMinutes": 15|30|60|120,
+      "energy": "low|medium|high",
+      "taskContext": "desk|phone|errand"
+    }
+  ],
+
+  "openLoops": [
+    {
+      "type": "decision|waiting_for",
+      "description": "What decision is pending or what you're waiting for"
+    }
+  ],
+
+  "draftMessages": [...],
+  "people": [...],
+  "recordedAt": "{recordingDate}"
+}
+
+## V2 Task Rules:
+
+**Physical Action Format:**
+- BAD: "Work on presentation"
+- GOOD: "Open Google Slides and add 3 bullet points to intro slide"
+- BAD: "Follow up with Sarah"
+- GOOD: "Open Slack and send Sarah the budget link"
+
+**Optional Fields (only include when clearly implied):**
+- estimatedMinutes: Only if duration mentioned or obvious (quick call = 15, big project = 120)
+- energy: low = mindless/routine, medium = focused work, high = creative/difficult
+- taskContext: desk = computer work, phone = calls/texts, errand = physical location
+
+**Open Loops - Extract when speaker mentions:**
+- Decisions they haven't made yet ("I'm not sure whether to...")
+- Things they're waiting on from others ("Once Sarah gets back to me...")
+- Unresolved questions ("I need to figure out...")
+
+**Note Type Classification:**
+- brain_dump: Stream of consciousness, multiple unrelated topics
+- meeting_debrief: Recap of a conversation or meeting
+- planning: Organizing future work or events
+- venting: Processing emotions, frustrations
+- idea_capture: Creative ideas, inspiration, possibilities
+
+Include empty arrays [] for categories with no data. theOneThing can be null if no clear priority.
+`
+
 export function buildAnalysisPrompt(
   transcription: string,
   _projectKnowledge: string,  // Kept for API compatibility, not used in simplified prompt
-  recordingDate?: string
+  recordingDate?: string,
+  version: 'v1' | 'v2' = 'v2'
 ): string {
   const date = recordingDate || new Date().toISOString()
-  return ANALYSIS_PROMPT
+  const prompt = version === 'v2' ? ANALYSIS_PROMPT_V2 : ANALYSIS_PROMPT
+  return prompt
     .replace(/{recordingDate}/g, date)
     .replace('{transcription}', transcription)
 }

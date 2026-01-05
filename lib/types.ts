@@ -58,6 +58,10 @@ export interface VoiceMemoryTask {
   completionNotes?: string
   pinned?: boolean
   pinnedAt?: string
+  // V2 ADHD analysis fields (optional for backwards compatibility)
+  estimatedMinutes?: 15 | 30 | 60 | 120
+  energy?: 'low' | 'medium' | 'high'
+  taskContext?: 'desk' | 'phone' | 'errand'
 }
 
 export interface ProcessingResult {
@@ -120,6 +124,10 @@ export interface AnalysisTask {
   dueDate?: string        // If a due date was mentioned
   assignedTo?: string     // If delegated to someone else
   context?: string        // Brief context from the recording
+  // V2 ADHD analysis fields (optional for backwards compatibility)
+  estimatedMinutes?: 15 | 30 | 60 | 120  // Time estimate
+  energy?: 'low' | 'medium' | 'high'      // Energy level required
+  taskContext?: 'desk' | 'phone' | 'errand'  // Where task can be done
 }
 
 // Person mentioned in recording
@@ -148,7 +156,10 @@ export interface NoteAnalysis {
   topic: string
 
   // The single most important thing mentioned (ADHD-friendly)
-  theOneThing: string | null
+  theOneThing: {
+    task: string
+    why: string  // One sentence explaining priority
+  } | null
 
   // Tasks extracted with urgency and domain
   tasks: AnalysisTask[]
@@ -161,6 +172,14 @@ export interface NoteAnalysis {
 
   // Recording timestamp
   recordedAt: string
+
+  // V2 ADHD analysis fields (optional for backwards compatibility)
+  openLoops?: Array<{
+    type: 'decision' | 'waiting_for'
+    description: string
+  }>
+
+  noteType?: 'brain_dump' | 'meeting_debrief' | 'planning' | 'venting' | 'idea_capture'
 }
 
 // Legacy type aliases for backward compatibility during migration

@@ -23,6 +23,34 @@ interface EnhancedTaskListProps {
   onAutoUnpinToggle: (enabled: boolean) => void
 }
 
+// Helper functions for V2 time/energy display
+const getEnergyColor = (energy: string) => {
+  switch (energy) {
+    case 'high': return 'bg-red-100 text-red-700'
+    case 'medium': return 'bg-yellow-100 text-yellow-700'
+    case 'low': return 'bg-green-100 text-green-700'
+    default: return 'bg-gray-100 text-gray-600'
+  }
+}
+
+const getEnergyEmoji = (energy: string) => {
+  switch (energy) {
+    case 'high': return '⚡'
+    case 'medium': return '🔋'
+    case 'low': return '🪫'
+    default: return ''
+  }
+}
+
+const getContextEmoji = (context: string) => {
+  switch (context) {
+    case 'desk': return '🖥️'
+    case 'phone': return '📱'
+    case 'errand': return '🏃'
+    default: return ''
+  }
+}
+
 export default function EnhancedTaskList({
   tasks,
   onPin,
@@ -236,8 +264,24 @@ export default function EnhancedTaskList({
                             ✓ {formatDate(task.completedAt)}
                           </span>
                         )}
+                        {/* V2 Time/Energy metadata */}
+                        {task.estimatedMinutes && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                            ⏱️ {task.estimatedMinutes}m
+                          </span>
+                        )}
+                        {task.energy && (
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEnergyColor(task.energy)}`}>
+                            {getEnergyEmoji(task.energy)} {task.energy}
+                          </span>
+                        )}
+                        {task.taskContext && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            {getContextEmoji(task.taskContext)} {task.taskContext}
+                          </span>
+                        )}
                       </div>
-                      
+
                       <p className={`font-medium mb-2 ${
                         task.completed ? 'text-gray-500 line-through' : 'text-gray-900'
                       }`}>
