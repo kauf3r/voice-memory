@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from './AuthProvider'
+import V2MigrationButton from './V2MigrationButton'
 
 export default function Header() {
   const { user, signOut } = useAuth()
@@ -36,6 +37,9 @@ export default function Header() {
               Knowledge
             </a>
           </nav>
+
+          {/* V2 Migration (shows only if needed) */}
+          <V2MigrationButton />
 
           {/* User menu */}
           <div className="flex items-center space-x-4">
