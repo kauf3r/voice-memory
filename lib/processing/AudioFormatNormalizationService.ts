@@ -328,9 +328,13 @@ export class AudioFormatNormalizationService {
       }
 
       const ffmpeg = require('fluent-ffmpeg')
+      const ffmpegPath = require('ffmpeg-static')
       const fs = require('fs')
       const path = require('path')
       const os = require('os')
+
+      // Configure FFmpeg to use the static binary
+      ffmpeg.setFfmpegPath(ffmpegPath)
 
       // Create temporary files
       const tempDir = os.tmpdir()
@@ -394,6 +398,122 @@ export class AudioFormatNormalizationService {
         mimeType: 'application/octet-stream',
         warnings,
         error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+
+  /**
+   * Compress large audio files for faster upload to Whisper API
+   * This is especially important for serverless environments with network constraints
+   */
+  async compressForWhisperUpload(
+    buffer: Buffer,
+    mimeType: string,
+    filename: string
+  ): Promise<{ success: boolean; buffer: Buffer; mimeType: string; originalSize: number; compressedSize: number; warnings: string[] }> {
+    const warnings: string[] = []
+    const originalSize = buffer.length
+
+    // Only compress files larger than 2MB - smaller files should upload fine
+    const COMPRESSION_THRESHOLD = 2 * 1024 * 1024
+
+    if (buffer.length < COMPRESSION_THRESHOLD) {
+      console.log(`📦 Audio file ${(buffer.length / 1024 / 1024).toFixed(2)}MB - no compression needed`)
+      return {
+        success: true,
+        buffer,
+        mimeType,
+        originalSize,
+        compressedSize: buffer.length,
+        warnings: ['File size under threshold, no compression applied']
+      }
+    }
+
+    console.log(`📦 Compressing large audio file: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`)
+
+    try {
+      // Only available on server-side
+      if (typeof window !== 'undefined') {
+        warnings.push('Audio compression only available on server-side')
+        return { success: false, buffer, mimeType, originalSize, compressedSize: buffer.length, warnings }
+      }
+
+      const ffmpeg = require('fluent-ffmpeg')
+      const ffmpegPath = require('ffmpeg-static')
+      const fs = require('fs')
+      const path = require('path')
+      const os = require('os')
+
+      // Configure FFmpeg to use the static binary
+      ffmpeg.setFfmpegPath(ffmpegPath)
+
+      // Determine input extension from mime type
+      const inputExt = mimeType.includes('mpeg') ? 'mp3' :
+                       mimeType.includes('wav') ? 'wav' :
+                       mimeType.includes('ogg') ? 'ogg' :
+                       mimeType.includes('webm') ? 'webm' :
+                       mimeType.includes('m4a') ? 'm4a' :
+                       mimeType.includes('mp4') ? 'm4a' : 'mp3'
+
+      // Create temporary files
+      const tempDir = os.tmpdir()
+      const inputFile = path.join(tempDir, `compress_in_${Date.now()}.${inputExt}`)
+      const outputFile = path.join(tempDir, `compress_out_${Date.now()}.mp3`)
+
+      // Write input buffer to temp file
+      fs.writeFileSync(inputFile, buffer)
+
+      // Compress using FFmpeg - aggressive settings for speech
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(inputFile)
+          .audioChannels(1) // Mono - halves file size
+          .audioFrequency(16000) // 16kHz - optimal for Whisper, reduces size
+          .toFormat('mp3')
+          .audioCodec('libmp3lame')
+          .audioBitrate('32k') // Very low bitrate - sufficient for speech, ~240KB/min
+          .on('start', (cmd: string) => console.log(`📦 FFmpeg: ${cmd}`))
+          .on('end', () => resolve())
+          .on('error', (error: Error) => reject(error))
+          .save(outputFile)
+      })
+
+      // Read compressed file
+      const compressedBuffer = fs.readFileSync(outputFile)
+      const compressedSize = compressedBuffer.length
+
+      // Cleanup temp files
+      try {
+        fs.unlinkSync(inputFile)
+        fs.unlinkSync(outputFile)
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup temp files:', cleanupError)
+      }
+
+      const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1)
+      console.log(`✅ Compression complete: ${(originalSize / 1024 / 1024).toFixed(2)}MB → ${(compressedSize / 1024 / 1024).toFixed(2)}MB (${compressionRatio}% reduction)`)
+
+      warnings.push(`Compressed from ${(originalSize / 1024 / 1024).toFixed(2)}MB to ${(compressedSize / 1024 / 1024).toFixed(2)}MB`)
+      warnings.push('Optimized for Whisper: 16kHz mono 32kbps MP3')
+
+      return {
+        success: true,
+        buffer: compressedBuffer,
+        mimeType: 'audio/mpeg',
+        originalSize,
+        compressedSize,
+        warnings
+      }
+
+    } catch (error) {
+      console.error('❌ Audio compression failed:', error)
+      warnings.push(`Compression failed: ${error instanceof Error ? error.message : String(error)}`)
+      return {
+        success: false,
+        buffer,
+        mimeType,
+        originalSize,
+        compressedSize: buffer.length,
+        warnings
       }
     }
   }

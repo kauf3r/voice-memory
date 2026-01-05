@@ -1,4 +1,4 @@
-import OpenAI from 'openai'
+import OpenAI, { toFile } from 'openai'
 import { validateAnalysis, type ValidatedAnalysis } from './validation'
 import { buildAnalysisPrompt } from './analysis'
 import { createServiceClient } from './supabase-server'
@@ -23,6 +23,8 @@ function getOpenAIClient(): OpenAI {
     console.log('✅ OPENAI_API_KEY found, creating client')
     openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      timeout: 240000, // 4 minutes timeout for large audio file uploads
+      maxRetries: 0, // We handle retries ourselves
     })
     console.log('✅ OpenAI client initialized successfully')
   }
@@ -318,6 +320,68 @@ async function withRetry<T>(
   throw lastError!
 }
 
+/**
+ * Direct fetch upload for large files - bypasses SDK for better control
+ * Uses chunked transfer with explicit timeouts for serverless environments
+ */
+async function transcribeWithDirectFetch(file: File): Promise<{ text: string; error: null }> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY not configured')
+  }
+
+  console.log('📤 Preparing multipart form data...')
+
+  // Create form data
+  const formData = new FormData()
+
+  // Add the file - use Blob for better compatibility
+  const arrayBuffer = await file.arrayBuffer()
+  const blob = new Blob([arrayBuffer], { type: file.type || 'audio/mpeg' })
+  formData.append('file', blob, file.name)
+  formData.append('model', OPENAI_MODELS.whisper)
+  formData.append('response_format', 'text')
+  formData.append('language', 'en')
+
+  console.log(`📤 Uploading ${(file.size / 1024 / 1024).toFixed(2)}MB to OpenAI Whisper...`)
+
+  // Use AbortController with generous timeout for large files
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 minute timeout
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        // Don't set Content-Type - fetch will set it with boundary for multipart
+      },
+      body: formData,
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ OpenAI API error:', response.status, errorText)
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
+    }
+
+    const transcription = await response.text()
+    console.log('✅ Transcription completed, length:', transcription.length)
+
+    return { text: transcription, error: null }
+  } catch (error) {
+    clearTimeout(timeoutId)
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Upload timeout - file may be too large for serverless environment')
+    }
+    throw error
+  }
+}
+
 export async function transcribeAudio(file: File): Promise<{ text: string | null; error: Error | null }> {
   return withRetry(async () => {
     // Check rate limit
@@ -327,11 +391,33 @@ export async function transcribeAudio(file: File): Promise<{ text: string | null
 
     console.log('Starting transcription for file:', file.name, 'Size:', file.size, 'Model:', OPENAI_MODELS.whisper)
 
+    // For large files, use direct fetch with multipart form data for better control
+    const fileSizeThreshold = 3 * 1024 * 1024 // 3MB
+
+    if (file.size > fileSizeThreshold) {
+      console.log('📤 Large file detected, using direct fetch upload...')
+      return await transcribeWithDirectFetch(file)
+    }
+
+    // For smaller files, use the SDK
+    let uploadFile: File | Awaited<ReturnType<typeof toFile>>
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      console.log('📤 Converting file for upload, buffer size:', buffer.length)
+      uploadFile = await toFile(buffer, file.name, { type: file.type })
+      console.log('📤 File converted successfully')
+    } catch (conversionError) {
+      console.error('❌ File conversion failed:', conversionError)
+      uploadFile = file
+    }
+
+    console.log('📤 Calling OpenAI Whisper API...')
     const transcription = await getOpenAIClient().audio.transcriptions.create({
-      file: file,
+      file: uploadFile,
       model: OPENAI_MODELS.whisper,
       response_format: 'text',
-      language: 'en', // Can be made configurable
+      language: 'en',
     })
 
     console.log('Transcription completed, length:', transcription.length)
@@ -363,8 +449,71 @@ export async function transcribeAudio(file: File): Promise<{ text: string | null
   })
 }
 
+/**
+ * Direct fetch for chat completions - bypasses SDK for better reliability in serverless
+ */
+async function analyzeWithDirectFetch(
+  prompt: string,
+  systemPrompt: string
+): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY not configured')
+  }
+
+  console.log('📤 Using direct fetch for GPT-4 analysis...')
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODELS.gpt,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 3500,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ OpenAI API error:', response.status, errorText)
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content?.trim()
+
+    if (!content) {
+      throw new Error('Empty response from GPT-4')
+    }
+
+    console.log('✅ Analysis completed, response length:', content.length)
+    return content
+  } catch (error) {
+    clearTimeout(timeoutId)
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Analysis timeout - request took too long')
+    }
+    throw error
+  }
+}
+
 export async function analyzeTranscription(
-  transcription: string, 
+  transcription: string,
   projectKnowledge: string = '',
   recordingDate?: string
 ): Promise<{ analysis: ValidatedAnalysis | null; error: Error | null; warning?: string }> {
@@ -377,24 +526,10 @@ export async function analyzeTranscription(
     console.log('Starting analysis for transcription length:', transcription.length, 'Model:', OPENAI_MODELS.gpt)
 
     const prompt = buildAnalysisPrompt(transcription, projectKnowledge, recordingDate)
+    const systemPrompt = 'You are an expert analyst who extracts actionable insights from voice notes. Always return valid JSON.'
 
-    const completion = await getOpenAIClient().chat.completions.create({
-      model: OPENAI_MODELS.gpt,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert analyst who extracts actionable insights from voice notes. Always return valid JSON.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 3500, // Increased for BIB analysis fields (theOneThing, blockers, opportunities, sopCandidates)
-    })
-
-    const responseText = completion.choices[0]?.message?.content?.trim()
+    // Use direct fetch for better reliability in serverless environments
+    const responseText = await analyzeWithDirectFetch(prompt, systemPrompt)
     
     if (!responseText) {
       throw new Error('Empty response from GPT-4')
