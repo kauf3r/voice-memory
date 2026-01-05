@@ -13,6 +13,12 @@ const TaskUrgencySchema = z.enum(['NOW', 'SOON', 'LATER'])
 const TaskDomainSchema = z.enum(['WORK', 'PERS', 'PROJ'])
 const MoodSchema = z.enum(['positive', 'neutral', 'negative'])
 
+// V2 ADHD analysis enums
+const EnergySchema = z.enum(['low', 'medium', 'high'])
+const TaskContextSchema = z.enum(['desk', 'phone', 'errand'])
+const NoteTypeSchema = z.enum(['brain_dump', 'meeting_debrief', 'planning', 'venting', 'idea_capture'])
+const OpenLoopTypeSchema = z.enum(['decision', 'waiting_for'])
+
 // AnalysisTask schema (matches types.ts AnalysisTask)
 const AnalysisTaskSchema = z.object({
   title: z.string(),
@@ -21,7 +27,26 @@ const AnalysisTaskSchema = z.object({
   dueDate: z.string().optional(),
   assignedTo: z.string().optional(),
   context: z.string().optional(),
+  // V2 ADHD analysis fields (optional for backwards compatibility)
+  estimatedMinutes: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).optional(),
+  energy: EnergySchema.optional(),
+  taskContext: TaskContextSchema.optional(),
 })
+
+// V2 OpenLoop schema
+const OpenLoopSchema = z.object({
+  type: OpenLoopTypeSchema,
+  description: z.string(),
+})
+
+// V2 theOneThing schema - supports both V1 (string) and V2 (object) formats
+const TheOneThingSchema = z.union([
+  z.string(),
+  z.object({
+    task: z.string(),
+    why: z.string(),
+  })
+]).nullable()
 
 // DraftMessage schema (matches types.ts DraftMessage)
 const DraftMessageSchema = z.object({
@@ -43,11 +68,14 @@ export const AnalysisSchema = z.object({
   summary: z.string(),
   mood: MoodSchema,
   topic: z.string(),
-  theOneThing: z.string().nullable(),
+  theOneThing: TheOneThingSchema,
   tasks: z.array(AnalysisTaskSchema).default([]),
   draftMessages: z.array(DraftMessageSchema).default([]),
   people: z.array(MentionedPersonSchema).default([]),
   recordedAt: z.string(),
+  // V2 ADHD analysis fields (optional for backwards compatibility)
+  openLoops: z.array(OpenLoopSchema).optional().default([]),
+  noteType: NoteTypeSchema.optional(),
 })
 
 export type ValidatedAnalysis = z.infer<typeof AnalysisSchema>
@@ -100,6 +128,9 @@ interface RawAnalysisData {
   draftMessages?: unknown[]
   people?: unknown[]
   recordedAt?: unknown
+  // V2 fields
+  openLoops?: unknown[]
+  noteType?: unknown
 }
 
 // Create a partial analysis with fallback values - matches simplified NoteAnalysis
@@ -112,7 +143,14 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
       ? (raw.mood as 'positive' | 'neutral' | 'negative')
       : 'neutral',
     topic: typeof raw?.topic === 'string' ? raw.topic : 'General',
-    theOneThing: typeof raw?.theOneThing === 'string' ? raw.theOneThing : null,
+    // V2 supports both string and object formats for theOneThing
+    theOneThing: typeof raw?.theOneThing === 'string'
+      ? raw.theOneThing
+      : (raw?.theOneThing && typeof raw.theOneThing === 'object' &&
+         typeof (raw.theOneThing as Record<string, unknown>).task === 'string' &&
+         typeof (raw.theOneThing as Record<string, unknown>).why === 'string')
+        ? { task: (raw.theOneThing as Record<string, unknown>).task as string, why: (raw.theOneThing as Record<string, unknown>).why as string }
+        : null,
     tasks: Array.isArray(raw?.tasks)
       ? raw.tasks
           .filter((t): t is Record<string, unknown> =>
@@ -129,6 +167,10 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
             dueDate: typeof t.dueDate === 'string' ? t.dueDate : undefined,
             assignedTo: typeof t.assignedTo === 'string' ? t.assignedTo : undefined,
             context: typeof t.context === 'string' ? t.context : undefined,
+            // V2 ADHD fields - permissively accept if valid
+            estimatedMinutes: [15, 30, 60, 120].includes(t.estimatedMinutes as number) ? t.estimatedMinutes as 15 | 30 | 60 | 120 : undefined,
+            energy: ['low', 'medium', 'high'].includes(t.energy as string) ? t.energy as 'low' | 'medium' | 'high' : undefined,
+            taskContext: ['desk', 'phone', 'errand'].includes(t.taskContext as string) ? t.taskContext as 'desk' | 'phone' | 'errand' : undefined,
           }))
       : [],
     draftMessages: Array.isArray(raw?.draftMessages)
@@ -163,6 +205,23 @@ function createPartialAnalysis(rawAnalysis: unknown): ValidatedAnalysis {
     recordedAt: typeof raw?.recordedAt === 'string'
       ? raw.recordedAt
       : new Date().toISOString(),
+    // V2 fields - permissively default to empty/undefined if missing
+    openLoops: Array.isArray(raw?.openLoops)
+      ? raw.openLoops
+          .filter((loop): loop is Record<string, unknown> =>
+            loop !== null &&
+            typeof loop === 'object' &&
+            ['decision', 'waiting_for'].includes((loop as Record<string, unknown>).type as string) &&
+            typeof (loop as Record<string, unknown>).description === 'string'
+          )
+          .map(loop => ({
+            type: loop.type as 'decision' | 'waiting_for',
+            description: loop.description as string,
+          }))
+      : [],
+    noteType: ['brain_dump', 'meeting_debrief', 'planning', 'venting', 'idea_capture'].includes(raw?.noteType as string)
+      ? raw.noteType as 'brain_dump' | 'meeting_debrief' | 'planning' | 'venting' | 'idea_capture'
+      : undefined,
   }
 }
 
