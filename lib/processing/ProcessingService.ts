@@ -401,7 +401,10 @@ export class ProcessingService implements ProcessingServiceInterface {
       }
       
       await dbService.updateNoteProcessing(noteId, updateData)
-      
+
+      // Save open loops from V2 analysis (decisions and waiting-for items)
+      await this.analysisProcessor.saveOpenLoops(noteId, job.user_id, analysis)
+
       // Release lock
       await this.lockManager.releaseLock(noteId)
 
