@@ -207,8 +207,19 @@ export class ProcessingService implements ProcessingServiceInterface {
 
       // Step 2: Get note data and create job
       console.log('📋 Step 2: Getting note data...')
-      const dbService = createDatabaseService(this.client)
-      const noteResult = await dbService.getNoteById(noteId, userId)
+      let dbService: ReturnType<typeof createDatabaseService>
+      let noteResult: Awaited<ReturnType<ReturnType<typeof createDatabaseService>['getNoteById']>>
+      try {
+        console.log('📋 Step 2a: Creating dbService...')
+        dbService = createDatabaseService(this.client)
+        console.log('📋 Step 2b: Calling getNoteById...')
+        noteResult = await dbService.getNoteById(noteId, userId)
+        console.log('📋 Step 2c: getNoteById completed')
+      } catch (step2Error) {
+        console.error('❌ CRASH in Step 2:', step2Error)
+        console.error('❌ Stack:', step2Error instanceof Error ? step2Error.stack : 'no stack')
+        throw step2Error
+      }
       
       if (!noteResult.success || !noteResult.data) {
         console.error('❌ Failed to get note data:', noteResult.error)
@@ -308,19 +319,24 @@ export class ProcessingService implements ProcessingServiceInterface {
       // Step 1: Transcribe audio (if needed)
       this.metricsCollector.recordProcessingStage(noteId, 'transcription')
       this.performanceTracker.updateStageMetrics(noteId, 'transcription')
-      
+
       // Check if transcription already exists
+      console.log(`🔍 Step 1a: Creating dbService for transcription check...`)
       const dbService = createDatabaseService(this.client)
+      console.log(`🔍 Step 1b: Checking for existing transcription...`)
       const noteResult = await dbService.getNoteById(noteId)
-      
+      console.log(`🔍 Step 1c: Note result:`, { success: noteResult.success, hasTranscription: !!noteResult.data?.transcription })
+
       if (noteResult.success && noteResult.data?.transcription) {
         transcription = noteResult.data.transcription
         console.log(`✅ Using existing transcription for note ${noteId}`)
       } else {
         // Download and process audio
+        console.log(`📥 Downloading audio from storage: ${job.audio_url}`)
         const transcriptionStartTime = Date.now()
-        
+
         const { buffer, mimeType } = await this.audioProcessor.downloadAudioFromStorage(job.audio_url)
+        console.log(`📥 Audio downloaded: ${buffer.length} bytes, type: ${mimeType}`)
         
         // Update performance tracking with audio metadata
         this.performanceTracker.updateStageMetrics(noteId, 'transcription', {
