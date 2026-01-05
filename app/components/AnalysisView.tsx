@@ -11,6 +11,12 @@ interface AnalysisViewProps {
   className?: string
 }
 
+// Open loop type for V2 analysis
+interface OpenLoop {
+  type: 'decision' | 'waiting_for'
+  description: string
+}
+
 // Helper to normalize legacy analysis format to new format
 function normalizeAnalysis(analysis: any): {
   tasks: AnalysisTask[]
@@ -21,6 +27,7 @@ function normalizeAnalysis(analysis: any): {
   theOneThing: { task: string; why: string } | null
   noteType: string | null
   people: any[]
+  openLoops: OpenLoop[]
 } {
   // Normalize tasks - handle both array (new) and object (legacy) formats
   let tasks: AnalysisTask[] = []
@@ -95,7 +102,12 @@ function normalizeAnalysis(analysis: any): {
   // People
   const people = analysis.people || analysis.mentionedPeople || []
 
-  return { tasks, draftMessages, topic, mood, summary, theOneThing, noteType, people }
+  // Open Loops (V2 only) - decisions pending and waiting-for items
+  const openLoops: OpenLoop[] = Array.isArray(analysis.openLoops)
+    ? analysis.openLoops.filter((loop: any) => loop.type && loop.description)
+    : []
+
+  return { tasks, draftMessages, topic, mood, summary, theOneThing, noteType, people, openLoops }
 }
 
 export default function AnalysisView({
@@ -164,6 +176,7 @@ export default function AnalysisView({
   const sections = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'tasks', label: 'Tasks', icon: '✅', count: normalized.tasks.length },
+    { id: 'openLoops', label: 'Open Loops', icon: '🔄', count: normalized.openLoops.length },
     { id: 'messages', label: 'Messages', icon: '✉️', count: normalized.draftMessages.length },
     { id: 'people', label: 'People', icon: '👥', count: normalized.people.length },
   ]
@@ -396,9 +409,96 @@ export default function AnalysisView({
     </div>
   )
 
+  const getOpenLoopIcon = (type: string) => {
+    switch (type) {
+      case 'decision': return '🤔'
+      case 'waiting_for': return '⏳'
+      default: return '🔄'
+    }
+  }
+
+  const getOpenLoopColor = (type: string) => {
+    switch (type) {
+      case 'decision': return 'bg-amber-50 border-amber-200 text-amber-800'
+      case 'waiting_for': return 'bg-cyan-50 border-cyan-200 text-cyan-800'
+      default: return 'bg-gray-50 border-gray-200 text-gray-800'
+    }
+  }
+
+  const renderOpenLoops = () => {
+    const decisions = normalized.openLoops.filter(l => l.type === 'decision')
+    const waitingFor = normalized.openLoops.filter(l => l.type === 'waiting_for')
+
+    return (
+      <div className="space-y-6">
+        {/* Description */}
+        <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+          <p className="text-sm text-blue-800">
+            <strong>Open loops</strong> are unresolved items that take up mental bandwidth.
+            Decisions need to be made, and waiting-for items need follow-up.
+          </p>
+        </div>
+
+        {/* Decisions */}
+        {decisions.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold text-amber-700 mb-3 flex items-center gap-2">
+              <span>🤔</span> Decisions to Make ({decisions.length})
+            </h3>
+            <div className="space-y-3">
+              {decisions.map((loop, index) => (
+                <div
+                  key={index}
+                  className={`rounded-lg p-4 border-2 ${getOpenLoopColor(loop.type)}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl">{getOpenLoopIcon(loop.type)}</span>
+                    <p className="text-gray-900">{loop.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Waiting For */}
+        {waitingFor.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold text-cyan-700 mb-3 flex items-center gap-2">
+              <span>⏳</span> Waiting For ({waitingFor.length})
+            </h3>
+            <div className="space-y-3">
+              {waitingFor.map((loop, index) => (
+                <div
+                  key={index}
+                  className={`rounded-lg p-4 border-2 ${getOpenLoopColor(loop.type)}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl">{getOpenLoopIcon(loop.type)}</span>
+                    <p className="text-gray-900">{loop.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {normalized.openLoops.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            <p className="text-4xl mb-2">🧘</p>
+            <p>No open loops identified in this recording.</p>
+            <p className="text-sm mt-1">Your mind is clear!</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderContent = () => {
     switch (activeSection) {
       case 'tasks': return renderTasks()
+      case 'openLoops': return renderOpenLoops()
       case 'messages': return renderMessages()
       case 'people': return renderPeople()
       default: return renderOverview()
