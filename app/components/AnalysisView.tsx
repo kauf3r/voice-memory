@@ -1,7 +1,7 @@
 'use client'
 
 import { NoteAnalysis, AnalysisTask } from '@/lib/types'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import MessageDrafter from './MessageDrafter'
 
 interface AnalysisViewProps {
@@ -9,12 +9,24 @@ interface AnalysisViewProps {
   transcription?: string
   audioUrl?: string
   className?: string
+  noteId?: string
 }
 
-// Open loop type for V2 analysis
+// Open loop type for V2 analysis (from JSON)
 interface OpenLoop {
   type: 'decision' | 'waiting_for'
   description: string
+}
+
+// Database open loop with ID and resolved status
+interface DbOpenLoop {
+  id: string
+  note_id: string
+  user_id: string
+  type: 'decision' | 'waiting_for'
+  description: string
+  resolved: boolean
+  created_at: string
 }
 
 // Helper to normalize legacy analysis format to new format
@@ -114,12 +126,73 @@ export default function AnalysisView({
   analysis,
   transcription,
   audioUrl,
-  className = ''
+  className = '',
+  noteId
 }: AnalysisViewProps) {
   const [activeSection, setActiveSection] = useState<string>('overview')
+  const [dbOpenLoops, setDbOpenLoops] = useState<DbOpenLoop[]>([])
+  const [isLoadingLoops, setIsLoadingLoops] = useState(false)
+  const [showResolved, setShowResolved] = useState(false)
 
   // Normalize the analysis to handle legacy formats
   const normalized = useMemo(() => normalizeAnalysis(analysis), [analysis])
+
+  // Fetch open loops from database when noteId is provided
+  useEffect(() => {
+    if (!noteId) return
+
+    const fetchOpenLoops = async () => {
+      setIsLoadingLoops(true)
+      try {
+        const res = await fetch(`/api/notes/${noteId}/open-loops`)
+        if (res.ok) {
+          const data = await res.json()
+          setDbOpenLoops(data.openLoops || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch open loops:', error)
+      } finally {
+        setIsLoadingLoops(false)
+      }
+    }
+
+    fetchOpenLoops()
+  }, [noteId])
+
+  // Resolve/unresolve an open loop
+  const toggleResolve = useCallback(async (loopId: string, currentResolved: boolean) => {
+    // Optimistic update
+    setDbOpenLoops(prev =>
+      prev.map(loop =>
+        loop.id === loopId ? { ...loop, resolved: !currentResolved } : loop
+      )
+    )
+
+    try {
+      const res = await fetch(`/api/open-loops/${loopId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: !currentResolved })
+      })
+
+      if (!res.ok) {
+        // Revert on failure
+        setDbOpenLoops(prev =>
+          prev.map(loop =>
+            loop.id === loopId ? { ...loop, resolved: currentResolved } : loop
+          )
+        )
+      }
+    } catch (error) {
+      console.error('Failed to toggle resolve:', error)
+      // Revert on error
+      setDbOpenLoops(prev =>
+        prev.map(loop =>
+          loop.id === loopId ? { ...loop, resolved: currentResolved } : loop
+        )
+      )
+    }
+  }, [])
 
   const getMoodEmoji = (mood: string) => {
     switch (mood?.toLowerCase()) {
@@ -173,10 +246,16 @@ export default function AnalysisView({
     LATER: normalized.tasks.filter(t => t.urgency === 'LATER')
   }
 
+  // Use database open loops if available, fallback to analysis JSON
+  const openLoopsForDisplay = noteId && dbOpenLoops.length > 0 ? dbOpenLoops : null
+  const unresolvedCount = openLoopsForDisplay
+    ? openLoopsForDisplay.filter(l => !l.resolved).length
+    : normalized.openLoops.length
+
   const sections = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'tasks', label: 'Tasks', icon: '✅', count: normalized.tasks.length },
-    { id: 'openLoops', label: 'Open Loops', icon: '🔄', count: normalized.openLoops.length },
+    { id: 'openLoops', label: 'Open Loops', icon: '🔄', count: unresolvedCount },
     { id: 'messages', label: 'Messages', icon: '✉️', count: normalized.draftMessages.length },
     { id: 'people', label: 'People', icon: '👥', count: normalized.people.length },
   ]
@@ -426,8 +505,71 @@ export default function AnalysisView({
   }
 
   const renderOpenLoops = () => {
-    const decisions = normalized.openLoops.filter(l => l.type === 'decision')
-    const waitingFor = normalized.openLoops.filter(l => l.type === 'waiting_for')
+    // Use database loops if available (with IDs for resolving), else fallback to analysis JSON
+    const useDbLoops = noteId && dbOpenLoops.length > 0
+
+    if (isLoadingLoops) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <p>Loading open loops...</p>
+        </div>
+      )
+    }
+
+    // Render a single open loop card
+    const renderLoopCard = (loop: DbOpenLoop | OpenLoop, index: number) => {
+      const isDbLoop = 'id' in loop
+      const isResolved = isDbLoop && (loop as DbOpenLoop).resolved
+
+      return (
+        <div
+          key={isDbLoop ? (loop as DbOpenLoop).id : index}
+          className={`rounded-lg p-4 border-2 transition-all ${
+            isResolved
+              ? 'bg-gray-50 border-gray-200 opacity-60'
+              : getOpenLoopColor(loop.type)
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <span className="text-xl">
+              {isResolved ? '✅' : getOpenLoopIcon(loop.type)}
+            </span>
+            <p className={`flex-1 ${isResolved ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+              {loop.description}
+            </p>
+            {isDbLoop && (
+              <button
+                onClick={() => toggleResolve((loop as DbOpenLoop).id, isResolved)}
+                className={`px-3 py-1 text-sm font-medium rounded-full transition-colors ${
+                  isResolved
+                    ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                }`}
+              >
+                {isResolved ? 'Undo' : 'Resolve'}
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Get loops to display
+    const loopsToShow = useDbLoops ? dbOpenLoops : normalized.openLoops
+    const unresolvedLoops = useDbLoops
+      ? (loopsToShow as DbOpenLoop[]).filter(l => !l.resolved)
+      : loopsToShow
+    const resolvedLoops = useDbLoops
+      ? (loopsToShow as DbOpenLoop[]).filter(l => l.resolved)
+      : []
+
+    const decisions = unresolvedLoops.filter(l => l.type === 'decision')
+    const waitingFor = unresolvedLoops.filter(l => l.type === 'waiting_for')
+    const resolvedDecisions = resolvedLoops.filter(l => l.type === 'decision')
+    const resolvedWaitingFor = resolvedLoops.filter(l => l.type === 'waiting_for')
+
+    const hasUnresolved = decisions.length > 0 || waitingFor.length > 0
+    const hasResolved = resolvedLoops.length > 0
 
     return (
       <div className="space-y-6">
@@ -446,17 +588,7 @@ export default function AnalysisView({
               <span>🤔</span> Decisions to Make ({decisions.length})
             </h3>
             <div className="space-y-3">
-              {decisions.map((loop, index) => (
-                <div
-                  key={index}
-                  className={`rounded-lg p-4 border-2 ${getOpenLoopColor(loop.type)}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl">{getOpenLoopIcon(loop.type)}</span>
-                    <p className="text-gray-900">{loop.description}</p>
-                  </div>
-                </div>
-              ))}
+              {decisions.map((loop, index) => renderLoopCard(loop, index))}
             </div>
           </div>
         )}
@@ -468,27 +600,45 @@ export default function AnalysisView({
               <span>⏳</span> Waiting For ({waitingFor.length})
             </h3>
             <div className="space-y-3">
-              {waitingFor.map((loop, index) => (
-                <div
-                  key={index}
-                  className={`rounded-lg p-4 border-2 ${getOpenLoopColor(loop.type)}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl">{getOpenLoopIcon(loop.type)}</span>
-                    <p className="text-gray-900">{loop.description}</p>
-                  </div>
-                </div>
-              ))}
+              {waitingFor.map((loop, index) => renderLoopCard(loop, index))}
             </div>
           </div>
         )}
 
+        {/* Resolved Section */}
+        {hasResolved && (
+          <div>
+            <button
+              onClick={() => setShowResolved(!showResolved)}
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+            >
+              <span>{showResolved ? '▼' : '▶'}</span>
+              <span>Resolved ({resolvedLoops.length})</span>
+            </button>
+            {showResolved && (
+              <div className="mt-3 space-y-3">
+                {resolvedDecisions.map((loop, index) => renderLoopCard(loop, index))}
+                {resolvedWaitingFor.map((loop, index) => renderLoopCard(loop, index))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Empty State */}
-        {normalized.openLoops.length === 0 && (
+        {!hasUnresolved && !hasResolved && (
           <div className="text-center py-8 text-gray-500">
             <p className="text-4xl mb-2">🧘</p>
             <p>No open loops identified in this recording.</p>
             <p className="text-sm mt-1">Your mind is clear!</p>
+          </div>
+        )}
+
+        {/* All Resolved State */}
+        {!hasUnresolved && hasResolved && (
+          <div className="text-center py-8 text-gray-500">
+            <p className="text-4xl mb-2">🎉</p>
+            <p>All open loops resolved!</p>
+            <p className="text-sm mt-1">Great job closing those loops.</p>
           </div>
         )}
       </div>

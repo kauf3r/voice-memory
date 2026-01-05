@@ -112,6 +112,7 @@ function NoteCard({ note, onDelete, onRefresh, highlightFilter }: NoteCardProps)
             <AnalysisView
               analysis={note.analysis}
               transcription={note.transcription}
+              noteId={note.id}
               className="space-y-6"
             />
           </div>
